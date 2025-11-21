@@ -67,25 +67,11 @@ class DomRenderer(
     private fun applyStyle(style: DomStyle) {
         ctx.reset()
 
-        if (style.foreground != null) {
-            ctx.setColor(style.foreground)
-        } else {
-            ctx.resetColor()
-        }
+        if (style.foreground != null) ctx.setColor(style.foreground) else ctx.resetColor()
+        if (style.background != null) ctx.setBackgroundColor(style.background) else ctx.resetBackgroundColor()
 
-        if (style.background != null) {
-            ctx.setBackgroundColor(style.background)
-        } else {
-            ctx.resetBackgroundColor()
-        }
-
-        if (style.bold) {
-            ctx.bold()
-        }
-        if (style.italic) {
-            // ANSI italic; not all terminals support it
-            ctx.write("\u001B[3m")
-        }
+        if (style.bold) ctx.bold()
+        if (style.italic) ctx.write("\u001B[3m")
     }
 
     private fun drawNode(node: DomNode) {
@@ -94,28 +80,53 @@ class DomRenderer(
 
         applyStyle(node.style)
 
-        if (node.text.isNotEmpty()) {
-            val lines = node.text.split('\n')
-            var y = rect.y
-            for (line in lines) {
-                if (y >= rect.y + rect.height) break
-                if (rect.width <= 0) break
-                val clipped = if (line.length > rect.width) {
-                    line.substring(0, rect.width)
-                } else {
-                    line
+        // 1) Fill background for the whole node rect (only if it has a background)
+        if (node.style.background != null && rect.width > 0 && rect.height > 0) {
+            for (yy in rect.y until rect.y + rect.height) {
+                ctx.setCursorPosition(rect.x, yy)
+                var remaining = rect.width
+                // write spaces in chunks to avoid building huge strings
+                while (remaining > 0) {
+                    val chunk = minOf(remaining, 64)
+                    ctx.write(" ".repeat(chunk))
+                    remaining -= chunk
                 }
-                ctx.drawText(rect.x, y, clipped)
-                y++
             }
         }
 
+        // 2) Draw node content
+        if (node.text.isNotEmpty()) {
+            // Special case: vertical separator (1 column, 1-char text, no children)
+            if (rect.width == 1 && node.text.length == 1 && node.children.isEmpty()) {
+                val ch = node.text[0].toString()
+                for (yy in rect.y until rect.y + rect.height) {
+                    ctx.drawText(rect.x, yy, ch)
+                }
+            } else {
+                // Regular text block, clipped to rect
+                val lines = node.text.split('\n')
+                var y = rect.y
+                for (line in lines) {
+                    if (y >= rect.y + rect.height) break
+                    if (rect.width <= 0) break
+                    val clipped = if (line.length > rect.width) {
+                        line.substring(0, rect.width)
+                    } else {
+                        line
+                    }
+                    ctx.drawText(rect.x, y, clipped)
+                    y++
+                }
+            }
+        }
+
+        // 3) Children on top
         for (child in node.children) {
             drawNode(child)
         }
     }
 
-    // ========== Event routing ==========
+    // ---------- events ----------
 
     override fun onEvent(ctxFrom: VtDrawingContext, event: VtEvent) {
         when (event) {
@@ -126,7 +137,7 @@ class DomRenderer(
     }
 
     private fun handleMouse(ev: VtEvent.Mouse) {
-        val hit = findTopMostNodeAt(ev.x, ev.y) ?: return
+        val hit = findTopMostNodeAtInternal(ev.x, ev.y) ?: return
         val (node, rect) = hit
 
         val localX = ev.x - rect.x
@@ -148,7 +159,6 @@ class DomRenderer(
     }
 
     private fun handleKey(ev: VtEvent.Key) {
-        // No focus model yet: send keys to root only.
         root.onKey?.invoke(DomKeyEvent(ev.key, ev))
     }
 
@@ -164,11 +174,16 @@ class DomRenderer(
         }
     }
 
-    private fun findTopMostNodeAt(x: Int, y: Int): Pair<DomNode, Rect>? {
+    private fun findTopMostNodeAtInternal(x: Int, y: Int): Pair<DomNode, Rect>? {
         for (i in hitList.size - 1 downTo 0) {
             val (node, rect) = hitList[i]
             if (rect.contains(x, y)) return node to rect
         }
         return null
     }
+
+    // Public hit-test: only return node
+    fun findTopMostNodeAt(x: Int, y: Int): DomNode? =
+        findTopMostNodeAtInternal(x, y)?.first
 }
+

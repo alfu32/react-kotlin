@@ -54,6 +54,7 @@ data class Rect(
  * Slim DOM node.
  */
 class DomNode(
+    val id: String? = null,
     var text: String = "",
     var layout: DomLayout = DomLayout(),
     var style: DomStyle = DomStyle()
@@ -63,7 +64,6 @@ class DomNode(
 
     val children: MutableList<DomNode> = mutableListOf()
 
-    // Event listeners
     var onMouseDown: ((DomMouseEvent) -> Unit)? = null
     var onMouseUp: ((DomMouseEvent) -> Unit)? = null
     var onMouseMove: ((DomMouseEvent) -> Unit)? = null
@@ -71,7 +71,6 @@ class DomNode(
     var onKey: ((DomKeyEvent) -> Unit)? = null
     var onWindowResize: ((DomResizeEvent) -> Unit)? = null
 
-    // Layout result from last frame
     internal var bounds: Rect = Rect(0, 0, 0, 0)
 
     fun addChild(child: DomNode): DomNode {
