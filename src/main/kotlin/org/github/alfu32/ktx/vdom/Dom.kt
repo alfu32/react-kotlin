@@ -57,7 +57,8 @@ class DomNode(
     val id: String? = null,
     var text: String = "",
     var layout: DomLayout = DomLayout(),
-    var style: DomStyle = DomStyle()
+    var style: DomStyle = DomStyle(),
+    var component: DomComponent? = null    // <= NEW
 ) {
     var parent: DomNode? = null
         internal set

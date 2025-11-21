@@ -1,5 +1,6 @@
 package org.github.alfu32.ktx
 
+import org.github.alfu32.ktx.components.BoxComponent
 import org.github.alfu32.ktx.context.*
 import org.github.alfu32.ktx.vdom.*
 
@@ -16,14 +17,9 @@ class DomRenderer(
     var root: DomNode
 ) : VtEventListener {
 
-    // Hit list for mouse: draw-order = insertion order, last is top-most
     private val hitList = mutableListOf<Pair<DomNode, Rect>>()
+    private val defaultComponent: DomComponent = BoxComponent
 
-    /**
-     * Render one frame:
-     *  - recompute layout from ctx.windowWidth/Height
-     *  - clear + draw tree
-     */
     fun frame() {
         hitList.clear()
         val rootRect = Rect(
@@ -40,90 +36,37 @@ class DomRenderer(
         ctx.flush()
     }
 
-    // ========== Layout ==========
+    // Exposed so components can draw children
+    internal fun renderChildren(parent: DomNode) {
+        for (child in parent.children) {
+            drawNode(child)
+        }
+    }
+
+    // Public hit-test used by your controller
+    fun findTopMostNodeAt(x: Int, y: Int): DomNode? =
+        hitList.lastOrNull { (_, rect) -> rect.contains(x, y) }?.first
+
+    // ---------- layout ----------
 
     private fun layoutNode(node: DomNode, parentRect: Rect) {
-        val l = node.layout.left ?: 0
-        val t = node.layout.top ?: 0
-        val r = node.layout.right ?: 0
-        val b = node.layout.bottom ?: 0
+        val comp = node.component ?: defaultComponent
+        val rect = comp.layout(node, parentRect, ctx)
 
-        val x = parentRect.x + l
-        val y = parentRect.y + t
-        val width = (parentRect.width - l - r).coerceAtLeast(0)
-        val height = (parentRect.height - t - b).coerceAtLeast(0)
-
-        val rect = Rect(x, y, width, height)
         node.bounds = rect
         hitList += node to rect
 
+        // Children use node's rect as their parent rect (component can encode more logic if desired)
         for (child in node.children) {
             layoutNode(child, rect)
         }
     }
 
-    // ========== Drawing ==========
-
-    private fun applyStyle(style: DomStyle) {
-        ctx.reset()
-
-        if (style.foreground != null) ctx.setColor(style.foreground) else ctx.resetColor()
-        if (style.background != null) ctx.setBackgroundColor(style.background) else ctx.resetBackgroundColor()
-
-        if (style.bold) ctx.bold()
-        if (style.italic) ctx.write("\u001B[3m")
-    }
+    // ---------- drawing ----------
 
     private fun drawNode(node: DomNode) {
-        val rect = node.bounds
-        if (rect.width <= 0 || rect.height <= 0) return
-
-        applyStyle(node.style)
-
-        // 1) Fill background for the whole node rect (only if it has a background)
-        if (node.style.background != null && rect.width > 0 && rect.height > 0) {
-            for (yy in rect.y until rect.y + rect.height) {
-                ctx.setCursorPosition(rect.x, yy)
-                var remaining = rect.width
-                // write spaces in chunks to avoid building huge strings
-                while (remaining > 0) {
-                    val chunk = minOf(remaining, 64)
-                    ctx.write(" ".repeat(chunk))
-                    remaining -= chunk
-                }
-            }
-        }
-
-        // 2) Draw node content
-        if (node.text.isNotEmpty()) {
-            // Special case: vertical separator (1 column, 1-char text, no children)
-            if (rect.width == 1 && node.text.length == 1 && node.children.isEmpty()) {
-                val ch = node.text[0].toString()
-                for (yy in rect.y until rect.y + rect.height) {
-                    ctx.drawText(rect.x, yy, ch)
-                }
-            } else {
-                // Regular text block, clipped to rect
-                val lines = node.text.split('\n')
-                var y = rect.y
-                for (line in lines) {
-                    if (y >= rect.y + rect.height) break
-                    if (rect.width <= 0) break
-                    val clipped = if (line.length > rect.width) {
-                        line.substring(0, rect.width)
-                    } else {
-                        line
-                    }
-                    ctx.drawText(rect.x, y, clipped)
-                    y++
-                }
-            }
-        }
-
-        // 3) Children on top
-        for (child in node.children) {
-            drawNode(child)
-        }
+        val comp = node.component ?: defaultComponent
+        comp.render(node, ctx, this)
     }
 
     // ---------- events ----------
@@ -137,8 +80,14 @@ class DomRenderer(
     }
 
     private fun handleMouse(ev: VtEvent.Mouse) {
-        val hit = findTopMostNodeAtInternal(ev.x, ev.y) ?: return
+        val hit = hitList.lastOrNull { (_, rect) -> rect.contains(ev.x, ev.y) } ?: return
         val (node, rect) = hit
+
+        val comp = node.component ?: defaultComponent
+        if (comp.handleEvent(node, ev, ctx)) {
+            // component fully handled it
+            return
+        }
 
         val localX = ev.x - rect.x
         val localY = ev.y - rect.y
@@ -159,10 +108,17 @@ class DomRenderer(
     }
 
     private fun handleKey(ev: VtEvent.Key) {
+        // Simple model: send keys to root node's component first
+        val comp = root.component ?: defaultComponent
+        if (comp.handleEvent(root, ev, ctx)) return
+
         root.onKey?.invoke(DomKeyEvent(ev.key, ev))
     }
 
     private fun handleResize(ev: VtEvent.Resize) {
+        val comp = root.component ?: defaultComponent
+        if (comp.handleEvent(root, ev, ctx)) return
+
         val domEvent = DomResizeEvent(ev.width, ev.height, ev)
         broadcastResize(root, domEvent)
     }
@@ -173,17 +129,5 @@ class DomRenderer(
             broadcastResize(child, ev)
         }
     }
-
-    private fun findTopMostNodeAtInternal(x: Int, y: Int): Pair<DomNode, Rect>? {
-        for (i in hitList.size - 1 downTo 0) {
-            val (node, rect) = hitList[i]
-            if (rect.contains(x, y)) return node to rect
-        }
-        return null
-    }
-
-    // Public hit-test: only return node
-    fun findTopMostNodeAt(x: Int, y: Int): DomNode? =
-        findTopMostNodeAtInternal(x, y)?.first
 }
 
