@@ -1,5 +1,6 @@
 package org.github.alfu32.ktx
 
+import org.github.alfu32.ktx.color.VtColor
 import org.github.alfu32.ktx.context.*
 import org.github.alfu32.ktx.vdom.*
 
@@ -150,4 +151,85 @@ class AppController(
 
         renderer.frame()
     }
+}
+
+fun buildAppDom(): Map<String, DomNode> {
+    val root = DomNode(id = "root")
+
+    val titleBar = root.addChild(
+        DomNode(
+            id = "title",
+            text = "  My TUI App  (drag separator, press 'q' to quit)",
+            style = DomStyle(
+                foreground = VtColor(255.toByte(), 255.toByte(), 255.toByte()),
+                background = VtColor(0.toByte(), 0.toByte(), 160.toByte()),
+                bold = true
+            )
+        )
+    )
+
+    val mainArea = root.addChild(
+        DomNode(
+            id = "main",
+            style = DomStyle(
+                foreground = VtColor(220.toByte(), 220.toByte(), 220.toByte()),
+                background = VtColor(0.toByte(), 0.toByte(), 0.toByte())
+            )
+        )
+    )
+
+    val leftPanel = mainArea.addChild(
+        DomNode(
+            id = "left-panel",
+            text = "Left panel",
+            style = DomStyle(
+                foreground = VtColor(255.toByte(), 255.toByte(), 255.toByte()),
+                background = VtColor(0.toByte(), 64.toByte(), 64.toByte())
+            )
+        )
+    )
+
+    val separator = mainArea.addChild(
+        DomNode(
+            id = "separator",
+            text = "│",  // vertical bar; will be clipped to column
+            style = DomStyle(
+                foreground = VtColor(255.toByte(), 255.toByte(), 0.toByte()),
+                background = VtColor(0.toByte(), 0.toByte(), 0.toByte()),
+                bold = true
+            )
+        )
+    )
+
+    val contentArea = mainArea.addChild(
+        DomNode(
+            id = "content",
+            text = "Main content area",
+            style = DomStyle(
+                foreground = VtColor(255.toByte(), 255.toByte(), 255.toByte()),
+                background = VtColor(16.toByte(), 16.toByte(), 16.toByte())
+            )
+        )
+    )
+
+    val statusBar = root.addChild(
+        DomNode(
+            id = "status",
+            text = "",
+            style = DomStyle(
+                foreground = VtColor(0.toByte(), 0.toByte(), 0.toByte()),
+                background = VtColor(192.toByte(), 192.toByte(), 192.toByte())
+            )
+        )
+    )
+
+    return mapOf(
+        "root" to root,
+        "title" to titleBar,
+        "main" to mainArea,
+        "left-panel" to leftPanel,
+        "separator" to separator,
+        "content" to contentArea,
+        "status" to statusBar
+    )
 }
