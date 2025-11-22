@@ -258,12 +258,12 @@ class AnsiVtDrawingContext(
 
     private fun enableMouseTracking() {
         // Enable SGR mouse reporting
-        buffer.append("\u001B[?1002h") // button-event tracking
+        buffer.append("\u001B[?1003h") // all-motion tracking
         buffer.append("\u001B[?1006h") // SGR extended mode
     }
 
     private fun disableMouseTracking() {
-        buffer.append("\u001B[?1002l")
+        buffer.append("\u001B[?1003l")
         buffer.append("\u001B[?1006l")
     }
 

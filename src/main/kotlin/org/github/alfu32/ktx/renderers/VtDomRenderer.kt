@@ -18,6 +18,8 @@ class VtDomRenderer(
 ) : VtEventListener {
 
     private val hitList = mutableListOf<Pair<DomNode, Rect>>()
+    // Keep routing drag/up events to the node that was pressed even if the cursor leaves its bounds
+    private var mouseCapture: DomNode? = null
 
     fun frame() {
         hitList.clear()
@@ -92,8 +94,16 @@ class VtDomRenderer(
     }
 
     private fun handleMouse(ev: VtEvent.Mouse) {
-        val hit = hitList.lastOrNull { (_, rect) -> rect.contains(ev.x, ev.y) } ?: return
-        val (node, rect) = hit
+        val hit = hitList.lastOrNull { (_, rect) -> rect.contains(ev.x, ev.y) }
+        val target = when (ev.kind) {
+            VtMouseEventKind.Press -> hit?.first
+            VtMouseEventKind.Release,
+            VtMouseEventKind.Drag -> mouseCapture ?: hit?.first
+            VtMouseEventKind.Move -> mouseCapture ?: hit?.first
+        } ?: return
+
+        // Prefer the stored rect for the target (capture) even if the pointer left its bounds
+        val rect = hitList.firstOrNull { (node, _) -> node == target }?.second ?: hit?.second ?: return
 
         val localX = ev.x - rect.x
         val localY = ev.y - rect.y
@@ -107,10 +117,16 @@ class VtDomRenderer(
         )
 
         when (ev.kind) {
-            VtMouseEventKind.Press   -> node.onMouseDown?.invoke(domEv)
-            VtMouseEventKind.Release -> node.onMouseUp?.invoke(domEv)
+            VtMouseEventKind.Press -> {
+                mouseCapture = target
+                target.onMouseDown?.invoke(domEv)
+            }
+            VtMouseEventKind.Release -> {
+                target.onMouseUp?.invoke(domEv)
+                mouseCapture = null
+            }
             VtMouseEventKind.Move,
-            VtMouseEventKind.Drag    -> node.onMouseMove?.invoke(domEv)
+            VtMouseEventKind.Drag -> target.onMouseMove?.invoke(domEv)
         }
     }
 
