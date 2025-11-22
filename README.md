@@ -1,9 +1,3 @@
-Paul here.
-
-Below is a **complete README.md** suitable for the repository root.
-It documents all major parts of your framework: goals, architecture, components, rendering, layout, events, state, example apps, and boilerplate for a VT-terminal application.
-
-You can paste this directly into **README.md**.
 
 ---
 
