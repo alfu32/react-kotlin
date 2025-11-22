@@ -1,5 +1,6 @@
 package org.github.alfu32.ktx.color
 
+import org.github.alfu32.ktx.VtColor
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
@@ -18,7 +19,7 @@ class VtColorTest {
 
     @Test
     fun testAdjust() {
-        val c = VtColor(0x12.toUByte(),0x34.toUByte(),0x56.toUByte())
+        val c = VtColor(0x12.toUByte(), 0x34.toUByte(), 0x56.toUByte())
         val z = (1 .. 255).toList().map { it.toUByte() }
         z.map{
             val d100=c.adjust(it,100)
@@ -54,13 +55,13 @@ class VtColorTest {
     }
     @Test
     fun testToHex() {
-        val c = VtColor(0x12.toUByte(),0x34.toUByte(),0x56.toUByte())
+        val c = VtColor(0x12.toUByte(), 0x34.toUByte(), 0x56.toUByte())
         println(c.toHex())
         assertEquals("#123456",c.toHex())
     }
     @Test
     fun testToInt() {
-        val c = VtColor(0x12.toUByte(),0x34.toUByte(),0x56.toUByte())
+        val c = VtColor(0x12.toUByte(), 0x34.toUByte(), 0x56.toUByte())
         println(c.toInt())
         assertEquals(0x123456,c.toInt())
     }
