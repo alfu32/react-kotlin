@@ -2,6 +2,7 @@ package org.github.alfu32.ktx
 
 import java.io.InputStream
 import java.io.PrintStream
+import java.util.IdentityHashMap
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -151,6 +152,17 @@ class StyleSheet(
 
         private fun splitPathKey(key: String): List<String> =
             if (key.isBlank()) emptyList() else key.split('.')
+    }
+}
+
+class StateStore {
+    private val map = IdentityHashMap<Any, MutableMap<String, Any?>>()
+
+    @Suppress("UNCHECKED_CAST")
+    fun <T> use(keyOwner: Any, key: String, initial: () -> T): Pair<T, (T) -> Unit> {
+        val bucket = map.getOrPut(keyOwner) { mutableMapOf() }
+        val current = bucket[key] as? T ?: initial().also { bucket[key] = it }
+        return current to { v -> bucket[key] = v }
     }
 }
 
@@ -1005,9 +1017,12 @@ class VtDomRenderer(
     private val hitList = mutableListOf<Pair<DomNode, Rect>>()
     // Keep routing drag/up events to the node that was pressed even if the cursor leaves its bounds
     private var mouseCapture: DomNode? = null
+    private var focusedNode: DomNode? = null
+    private var focusedId: String? = null
 
     fun frame() {
         hitList.clear()
+        mouseCapture = null
 
         val rootRect = Rect(
             x = 0,
@@ -1017,10 +1032,15 @@ class VtDomRenderer(
         )
 
         layoutNode(root, rootRect)
+        focusedNode = focusedId?.let { id -> findById(root, id) }
 
         ctx.clear()
         drawNode(root)
         ctx.flush()
+    }
+
+    fun updateRoot(newRoot: DomNode) {
+        root = newRoot
     }
 
     // Called by BoxComponent (and other components) to render children
@@ -1104,6 +1124,8 @@ class VtDomRenderer(
         when (ev.kind) {
             VtMouseEventKind.Press -> {
                 mouseCapture = target
+                focusedNode = target
+                focusedId = target.id
                 target.onMouseDown?.invoke(domEv)
             }
             VtMouseEventKind.Release -> {
@@ -1116,8 +1138,8 @@ class VtDomRenderer(
     }
 
     private fun handleKey(ev: VtEvent.Key) {
-        // Simple: send to root only for now
-        root.onKey?.invoke(DomKeyEvent(ev.key, ev))
+        val target = focusedNode ?: root
+        target.onKey?.invoke(DomKeyEvent(ev.key, ev))
     }
 
     private fun handleResize(ev: VtEvent.Resize) {
@@ -1130,6 +1152,15 @@ class VtDomRenderer(
         for (child in node.children) {
             broadcastResize(child, ev)
         }
+    }
+
+    private fun findById(node: DomNode, id: String): DomNode? {
+        if (node.id == id) return node
+        for (child in node.children) {
+            val found = findById(child, id)
+            if (found != null) return found
+        }
+        return null
     }
 }
 
@@ -1169,19 +1200,17 @@ class DomNode(
     val id: String? = null,
     var text: String = "",
     var style: StyleSet = StyleSet(),
-    var component: DomComponent? = null    // <= NEW
+    var component: DomComponent? = null,
+    var onMouseDown: ((DomMouseEvent) -> Unit)? = null,
+    var onMouseUp: ((DomMouseEvent) -> Unit)? = null,
+    var onMouseMove: ((DomMouseEvent) -> Unit)? = null,
+    var onKey: ((DomKeyEvent) -> Unit)? = null,
+    var onWindowResize: ((DomResizeEvent) -> Unit)? = null
 ) {
     var parent: DomNode? = null
         internal set
 
     val children: MutableList<DomNode> = mutableListOf()
-
-    var onMouseDown: ((DomMouseEvent) -> Unit)? = null
-    var onMouseUp: ((DomMouseEvent) -> Unit)? = null
-    var onMouseMove: ((DomMouseEvent) -> Unit)? = null
-
-    var onKey: ((DomKeyEvent) -> Unit)? = null
-    var onWindowResize: ((DomResizeEvent) -> Unit)? = null
 
     internal var bounds: Rect = Rect(0, 0, 0, 0)
 
@@ -1254,8 +1283,7 @@ object BoxComponent : DomComponent {
 
 fun Splitter(
     state: AppState,
-    style: StyleSet,
-    dispatch: (String) -> Unit
+    style: StyleSet
 ): DomNode {
     val t = style.top ?: 0
     val b = style.bottom ?: t
@@ -1264,31 +1292,37 @@ fun Splitter(
         id = "splitter",
         style=style,
         component = BoxComponent,
-        text = "│\n".repeat(height)
-    ).apply {
+        text = "│\n".repeat(height),
         onMouseDown = { e ->
-            dispatch("""{"type":"start_drag","mouseX":${e.globalX}}""")
-            dispatch("""{"type":"status","text":"Splitter click ${e.globalX},${e.globalY}->${state}"}""")
-        }
+            state.dragging = true
+            state.dragStartMouseX = e.globalX
+            state.dragStartSplitterPosX = state.splitterPosX
+            state.statusText = "Splitter click ${e.globalX},${e.globalY}->${state}"
+        },
         onMouseMove = { e ->
-            dispatch("""{"type":"drag","mouseX":${e.globalX}}""")
-            dispatch("""{"type":"status","text":"Splitter dragging ${e.globalX},${e.globalY}->${state}"}""")
-        }
+            if (state.dragging) {
+                val dx = e.globalX - state.dragStartMouseX
+                state.splitterPosX = state.dragStartSplitterPosX + dx
+                state.statusText = "Splitter dragging ${e.globalX},${e.globalY}->${state}"
+            }
+        },
         onMouseUp = { e ->
-            dispatch("""{"type":"end_drag","mouseX":${e.globalX}}""")
-            dispatch("""{"type":"status","text":"Splitter finished ${e.globalX},${e.globalY}->${state}"}""")
+            val dx = e.globalX - state.dragStartMouseX
+            state.splitterPosX = state.dragStartSplitterPosX + dx
+            state.dragging = false
+            state.statusText = "Splitter finished ${e.globalX},${e.globalY}->${state}"
         }
-    }
+    )
 }
 
 private const val MIN_PANEL_WIDTH = 40
 
 data class AppState(
-    val splitterPosX: Int = 40,
+    var splitterPosX: Int = 40,
     var dragging: Boolean = false,
     var dragStartMouseX: Int = 0,
-    val dragStartSplitterPosX: Int = 40,
-    val statusText: String = ""
+    var dragStartSplitterPosX: Int = 40,
+    var statusText: String = ""
 ){
     override fun toString():String {
         return """sW:$splitterPosX,drg:$dragging,dSmX:$dragStartMouseX,dSsW:$dragStartSplitterPosX"""
@@ -1300,58 +1334,11 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
     private var state = AppState()
     private var renderer: VtDomRenderer? = null
     private var running = true
+    private val stateStore = StateStore()
 
     init {
         ctx.setEventListener(this)         // <-- use the generic setter
         ctx.onFrame = { frame() }
-    }
-
-    private fun dispatch(json: String) {
-        val payload = parseJson(json)
-        when (payload["type"]) {
-            "quit" -> {
-                running = false
-                ctx.stop()
-            }
-            "start_drag" -> {
-                val mouseX = payload["mouseX"]?.toIntOrNull() ?: return
-                state = state.copy(
-                    dragging = true,
-                    dragStartMouseX = mouseX,
-                    dragStartSplitterPosX = state.splitterPosX
-                )
-            }
-            "drag" -> {
-                val mouseX = payload["mouseX"]?.toIntOrNull() ?: return
-                if (!state.dragging) return
-                val dx = mouseX - state.dragStartMouseX
-                state = state.copy(splitterPosX = state.dragStartSplitterPosX + dx)
-            }
-            "end_drag" -> {
-                val mouseX = payload["mouseX"]?.toIntOrNull() ?: return
-                val dx = mouseX - state.dragStartMouseX
-                state = state.copy(
-                    splitterPosX = state.dragStartSplitterPosX + dx,
-                    dragging = false
-                )
-            }
-            "status" -> {
-                val text = payload["text"] ?: ""
-                state = state.copy(statusText = text)
-            }
-        }
-    }
-
-    private fun parseJson(json: String): Map<String, String> {
-        val map = mutableMapOf<String, String>()
-        val regex = Regex("\"([^\"]+)\"\\s*:\\s*(\"([^\"]*)\"|[-\\d]+|true|false)")
-        regex.findAll(json).forEach { match ->
-            val key = match.groupValues[1]
-            val raw = match.groupValues[2]
-            val value = if (raw.startsWith("\"")) raw.trim('"') else raw
-            map[key] = value
-        }
-        return map
     }
 
     override fun onEvent(ctx: VtDrawingContext, event: VtEvent) {
@@ -1359,7 +1346,8 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
         if (event is VtEvent.Key &&
             event.key.type == VtKeyType.Character &&
             event.key.ch == 'q') {
-            dispatch("""{"type":"quit"}""")
+            running = false
+            this.ctx.stop()
             return
         }
 
@@ -1369,7 +1357,7 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
     fun appView(
         state: AppState,
         ctx: VtDrawingContext,
-        dispatch: (String) -> Unit
+        store: StateStore
     ): DomNode {
         val root = DomNode(
             id = "root",
@@ -1392,48 +1380,44 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
             id = "title",
             style = StyleSet.parse("left:0; top:0; right:$w; bottom:0; fg:#bebebb; bg:#223388"),
             component = BoxComponent,
-            text = " TUI Demo (q = quit) "
-        ).apply {
+            text = " TUI Demo (q = quit) ",
             onMouseMove = { e ->
-                dispatch("""{"type":"status","text":"Title hovered ${e.globalX},${e.globalY}->${state}"}""")
+                state.statusText = "Title hovered ${e.globalX},${e.globalY}->${state}"
             }
-        }
+        )
 
         val main = DomNode(
             id = "main",
             style = StyleSet.parse("left:0; top:1; right:$w; bottom:${h - 1}; fg:#bebebb; bg:#182460"),
-            component = BoxComponent
-        ).apply {
+            component = BoxComponent,
             onMouseMove = { e ->
-                dispatch("""{"type":"status","text":"main hovered ${e.globalX},${e.globalY}->${state}"}""")
+                state.statusText = "main hovered ${e.globalX},${e.globalY}->${state}"
             }
-        }
+        )
 
         val statusBar = DomNode(
             id = "status",
             style = StyleSet.parse("left:0; top:${h - 1}; right:$w; bottom:${h - 1}; fg:#bebebb; bg:#4d4d4d"),
             component = BoxComponent,
-            text = "${state.statusText} | split=${panelWidth} drag=${state.dragging}"
-        ).apply {
+            text = "${state.statusText} | split=${panelWidth} drag=${state.dragging}",
             onMouseMove = { e ->
-                dispatch("""{"type":"status","text":"status hovered ${e.globalX},${e.globalY}->${state}"}""")
+                state.statusText = "status hovered ${e.globalX},${e.globalY}->${state}"
             }
-        }
+        )
 
         val fileTree = FileTreePanel(
             state,
             StyleSet.parse("left:0; top:0; right:${panelWidth - 1}; bottom:${mainHeight - 1}; fg:#bebebb; bg:#636fab"),
-            dispatch
+            store
         )
         val splitter = Splitter(
             state,
-            StyleSet.parse("left:$panelWidth; top:0; right:$panelWidth; bottom:$mainHeight; fg:#bebebb; bg:#808080"),
-            dispatch
+            StyleSet.parse("left:$panelWidth; top:0; right:$panelWidth; bottom:$mainHeight; fg:#bebebb; bg:#808080")
         )
         val editor = EditorPanel(
             state,
             StyleSet.parse("left:${panelWidth + 1}; top:0; right:$w; bottom:$mainHeight; fg:#bebebb; bg:#182460"),
-            dispatch
+            store
         )
 
         root.addChild(titleBar)
@@ -1449,10 +1433,12 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
     fun frame() {
         if (!running) return
 
-        val root = appView(state, ctx, ::dispatch)
-
-        // Recreate renderer each frame (simple; you can optimize later)
-        renderer = VtDomRenderer(ctx, root)
+        val root = appView(state, ctx, stateStore)
+        if (renderer == null) {
+            renderer = VtDomRenderer(ctx, root)
+        } else {
+            renderer!!.updateRoot(root)
+        }
         renderer!!.frame()
     }
 }
@@ -1460,39 +1446,45 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
 fun FileTreePanel(
     state: AppState,
     style: StyleSet,
-    dispatch: (String) -> Unit
+    store: StateStore
 ): DomNode {
-    return DomNode(
+    val node = DomNode(
         id = "file-tree",
         style=style,
         component = BoxComponent,
         text = "File tree\n[placeholder]"
-    ).apply {
-        onMouseDown = { e ->
-            dispatch("""{"type":"status","text":"FileTree click ${e.globalX},${e.globalY}->${state}"}""")
-        }
-        onMouseMove = { e ->
-            dispatch("""{"type":"status","text":"FileTree hovered ${e.globalX},${e.globalY}->${state}"}""")
-        }
+    )
+    val (clicks, setClicks) = store.use(node, "clicks") { 0 }
+    node.text = "File tree\n[placeholder]\nclicks:$clicks"
+    node.onMouseDown = { e ->
+        setClicks(clicks + 1)
+        state.statusText = "FileTree click ${e.globalX},${e.globalY}->${state}"
     }
+    node.onMouseMove = { e ->
+        state.statusText = "FileTree hovered ${e.globalX},${e.globalY}->${state}"
+    }
+    return node
 }
 
 fun EditorPanel(
     state: AppState,
     style: StyleSet,
-    dispatch: (String) -> Unit
+    store: StateStore
 ): DomNode {
-    return DomNode(
+    val node = DomNode(
         id = "editor",
         style = style,
         component = BoxComponent,
         text = "Editor\n[placeholder]"
-    ).apply {
-        onMouseDown = { e ->
-            dispatch("""{"type":"status","text":"Editor click ${e.globalX},${e.globalY}->${state}"}""")
-        }
-        onMouseMove = { e ->
-            dispatch("""{"type":"status","text":"Editor hovered ${e.globalX},${e.globalY}->${state}"}""")
-        }
+    )
+    val (hovers, setHovers) = store.use(node, "hovers") { 0 }
+    node.text = "Editor\n[placeholder]\nhovers:$hovers"
+    node.onMouseDown = { e ->
+        state.statusText = "Editor click ${e.globalX},${e.globalY}->${state}"
     }
+    node.onMouseMove = { e ->
+        setHovers(hovers + 1)
+        state.statusText = "Editor hovered ${e.globalX},${e.globalY}->${state}"
+    }
+    return node
 }
