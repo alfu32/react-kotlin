@@ -16,7 +16,7 @@ fun Splitter(
         id = "splitter",
         style=style,
         component = BoxComponent,
-        text = "│\n".repeat(layout.bottom - layout.top)
+        text = "│\n".repeat((layout.bottom - layout.top + 1).coerceAtLeast(1))
     ).apply {
         this.layout = layout
 

@@ -122,7 +122,7 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
         val rightLayout = DomLayout(
             left = panelWidth + 1,
             top = 0,
-            right = w - panelWidth -1,                // full remaining width inside main
+            right = w,                // fill the remaining width inside main
             bottom = mainHeight
         )
 
@@ -156,7 +156,7 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
             id = "status",
             style = DomStyle(foreground = fg, background = bg_status),
             component = BoxComponent,
-            text = state.statusText
+            text = "${state.statusText} | split=${panelWidth} drag=${state.dragging}"
         ).apply {
             layout = statusLayout
 
