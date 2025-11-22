@@ -9,7 +9,7 @@ fun FileTreePanel(
     state: AppState,
     style: DomStyle,
     layout: DomLayout,
-    dispatch: (Msg) -> Unit
+    dispatch: (String) -> Unit
 ): DomNode {
     return DomNode(
         id = "file-tree",
@@ -20,11 +20,10 @@ fun FileTreePanel(
         this.layout = layout
 
         onMouseDown = { e ->
-            dispatch(Msg.SetStatus("FileTree click ${e.globalX},${e.globalY}->${state}"))
+            dispatch("""{"type":"status","text":"FileTree click ${e.globalX},${e.globalY}->${state}"}""")
         }
         onMouseMove = { e ->
-            dispatch(Msg.SetStatus("FileTree hovered ${e.globalX},${e.globalY}->${state}"))
-            dispatch(Msg.SetMouseX(e.globalX))
+            dispatch("""{"type":"status","text":"FileTree hovered ${e.globalX},${e.globalY}->${state}"}""")
         }
     }
 }

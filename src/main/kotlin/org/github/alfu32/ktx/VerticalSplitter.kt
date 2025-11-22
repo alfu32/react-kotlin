@@ -10,7 +10,7 @@ fun Splitter(
     state: AppState,
     style: DomStyle,
     layout: DomLayout,
-    dispatch: (Msg) -> Unit
+    dispatch: (String) -> Unit
 ): DomNode {
     return DomNode(
         id = "splitter",
@@ -21,17 +21,16 @@ fun Splitter(
         this.layout = layout
 
         onMouseDown = { e ->
-            dispatch(Msg.StartDrag(e.globalX))
-            dispatch(Msg.SetStatus("Splitter click ${e.globalX},${e.globalY}->${state}"))
+            dispatch("""{"type":"start_drag","mouseX":${e.globalX}}""")
+            dispatch("""{"type":"status","text":"Splitter click ${e.globalX},${e.globalY}->${state}"}""")
         }
         onMouseMove = { e ->
-            dispatch(Msg.Drag(e.globalX))
-            dispatch(Msg.SetStatus("Splitter dragging ${e.globalX},${e.globalY}->${state}"))
-            dispatch(Msg.SetMouseX(e.globalX))
+            dispatch("""{"type":"drag","mouseX":${e.globalX}}""")
+            dispatch("""{"type":"status","text":"Splitter dragging ${e.globalX},${e.globalY}->${state}"}""")
         }
         onMouseUp = { e ->
-            dispatch(Msg.EndDrag(e.globalX))
-            dispatch(Msg.SetStatus("Splitter finished ${e.globalX},${e.globalY}->${state}"))
+            dispatch("""{"type":"end_drag","mouseX":${e.globalX}}""")
+            dispatch("""{"type":"status","text":"Splitter finished ${e.globalX},${e.globalY}->${state}"}""")
         }
     }
 }

@@ -9,7 +9,7 @@ fun EditorPanel(
     state: AppState,
     style: DomStyle,
     layout: DomLayout,
-    dispatch: (Msg) -> Unit
+    dispatch: (String) -> Unit
 ): DomNode {
     return DomNode(
         id = "editor",
@@ -20,11 +20,10 @@ fun EditorPanel(
         this.layout = layout
 
         onMouseDown = { e ->
-            dispatch(Msg.SetStatus("Editor click ${e.globalX},${e.globalY}->${state}"))
+            dispatch("""{"type":"status","text":"Editor click ${e.globalX},${e.globalY}->${state}"}""")
         }
         onMouseMove = { e ->
-            dispatch(Msg.SetStatus("Editor hovered ${e.globalX},${e.globalY}->${state}"))
-            dispatch(Msg.SetMouseX(e.globalX))
+            dispatch("""{"type":"status","text":"Editor hovered ${e.globalX},${e.globalY}->${state}"}""")
         }
     }
 }

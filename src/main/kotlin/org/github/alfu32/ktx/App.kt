@@ -13,24 +13,13 @@ data class AppState(
     var dragStartMouseX: Int = 0,
     val dragStartSplitterPosX: Int = 40,
     val statusText: String = "",
-    val statusText2: String = "",
-    val mouseX: Int = 0,
-    val width: Int = 200
+    val mouseX: Int = 40,
 ){
     override fun toString():String {
-        return """mouseX:${mouseX},sW:$splitterPosX,drg:$dragging,dSmX:$dragStartMouseX,dSsW:$dragStartSplitterPosX"""
+        return """sW:$splitterPosX,drg:$dragging,dSmX:$dragStartMouseX,dSsW:$dragStartSplitterPosX"""
     }
 }
 
-sealed interface Msg {
-    data class StartDrag(val mouseX: Int) : Msg
-    data class Drag(val mouseX: Int) : Msg
-    data class EndDrag(val mouseX: Int) : Msg
-    data class SetStatus(val text: String) : Msg
-    data class SetStatus2(val text: String) : Msg
-    data class SetMouseX(val mouseX: Int) : Msg
-    object Quit : Msg
-}
 class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
 
     private var state = AppState()
@@ -42,16 +31,56 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
         ctx.onFrame = { frame() }
     }
 
-    private fun dispatch(msg: Msg) {
-        when (msg) {
-            Msg.Quit -> {
+    private fun dispatch(json: String) {
+        val payload = parseJson(json)
+        when (payload["type"]) {
+            "quit" -> {
                 running = false
                 ctx.stop()
             }
-            else -> {
-                state = update(state, msg)
+            "start_drag" -> {
+                val mouseX = payload["mouseX"]?.toIntOrNull() ?: return
+                state = state.copy(
+                    dragging = true,
+                    dragStartMouseX = mouseX,
+                    dragStartSplitterPosX = state.splitterPosX
+                )
+            }
+            "drag" -> {
+                val mouseX = payload["mouseX"]?.toIntOrNull() ?: return
+                if (!state.dragging) return
+                val dx = mouseX - state.dragStartMouseX
+                state = state.copy(splitterPosX = state.dragStartSplitterPosX + dx)
+            }
+            "end_drag" -> {
+                val mouseX = payload["mouseX"]?.toIntOrNull() ?: return
+                val dx = mouseX - state.dragStartMouseX
+                state = state.copy(
+                    splitterPosX = state.dragStartSplitterPosX + dx,
+                    dragging = false
+                )
+            }
+            "status" -> {
+                val text = payload["text"] ?: ""
+                state = state.copy(statusText = text)
+            }
+            "mouseX" -> {
+                val text = payload["mouseX"] ?: ""
+                state = state.copy(statusText = text, mouseX = text.toInt())
             }
         }
+    }
+
+    private fun parseJson(json: String): Map<String, String> {
+        val map = mutableMapOf<String, String>()
+        val regex = Regex("\"([^\"]+)\"\\s*:\\s*(\"([^\"]*)\"|[-\\d]+|true|false)")
+        regex.findAll(json).forEach { match ->
+            val key = match.groupValues[1]
+            val raw = match.groupValues[2]
+            val value = if (raw.startsWith("\"")) raw.trim('"') else raw
+            map[key] = value
+        }
+        return map
     }
 
     override fun onEvent(ctx: VtDrawingContext, event: VtEvent) {
@@ -59,7 +88,7 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
         if (event is VtEvent.Key &&
             event.key.type == VtKeyType.Character &&
             event.key.ch == 'q') {
-            dispatch(Msg.Quit)
+            dispatch("""{"type":"quit"}""")
             return
         }
 
@@ -69,7 +98,7 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
     fun appView(
         state: AppState,
         ctx: VtDrawingContext,
-        dispatch: (Msg) -> Unit
+        dispatch: (String) -> Unit
     ): DomNode {
         val root = DomNode(id = "root", component = BoxComponent)
         val bg_top = VtColor.from(0x223388)
@@ -104,7 +133,7 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
         )
 
         // main horizontal layout from state
-        val minPanelWidth = 20
+        val minPanelWidth = MIN_PANEL_WIDTH
         val maxPanelWidth = (w - 2).coerceAtLeast(minPanelWidth)
         val panelWidth = if(state.dragging) {
             // state.splitterPosX=state.mouseX
@@ -146,7 +175,7 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
             layout = titleLayout
 
             onMouseMove = { e ->
-                dispatch(Msg.SetStatus("Title hovered ${e.globalX},${e.globalY}->${state}"))
+                dispatch("""{"type":"status","text":"Title hovered ${'$'}{e.globalX},${'$'}{e.globalY}->${state}"}""")
             }
         }
 
@@ -158,8 +187,7 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
             layout = mainLayout
 
             onMouseMove = { e ->
-                dispatch(Msg.SetStatus("main hovered ${e.globalX},${e.globalY}->${state}"))
-                dispatch(Msg.SetMouseX(e.globalX))
+                dispatch("""{"type":"status","text":"main hovered ${'$'}{e.globalX},${'$'}{e.globalY}->${state}"}""")
             }
         }
 
@@ -172,20 +200,7 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
             layout = statusLayout
 
             onMouseMove = { e ->
-                dispatch(Msg.SetStatus("status hovered ${e.globalX},${e.globalY}->${state}"))
-            }
-        }
-
-        val statusBar2 = DomNode(
-            id = "status2",
-            style = DomStyle(foreground = fg, background = bg_status),
-            component = BoxComponent,
-            text = "${state.statusText} | split=${panelWidth} drag=${state.dragging}"
-        ).apply {
-            layout = statusLayout
-
-            onMouseMove = { e ->
-                dispatch(Msg.SetStatus("status hovered ${e.globalX},${e.globalY}->${state}"))
+                dispatch("""{"type":"status","text":"status hovered ${'$'}{e.globalX},${'$'}{e.globalY}->${state}"}""")
             }
         }
 
@@ -214,48 +229,3 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
         renderer!!.frame()
     }
 }
-
-
-
-fun update(state: AppState, msg: Msg): AppState =
-    when (msg) {
-        is Msg.StartDrag ->
-            state.copy(
-                dragging = true,
-                dragStartMouseX = msg.mouseX,
-                dragStartSplitterPosX = state.splitterPosX
-            )
-
-        is Msg.Drag ->
-            if (!state.dragging) state
-            else {
-                val dx = msg.mouseX - state.dragStartMouseX
-                state.copy(splitterPosX = state.dragStartSplitterPosX + dx)
-            }
-
-        is Msg.EndDrag -> {
-            val dx = msg.mouseX - state.dragStartMouseX
-            state.copy(
-                splitterPosX = state.dragStartSplitterPosX + dx,
-                dragging = false
-            )
-        }
-
-        is Msg.SetStatus ->
-            state.copy(statusText = msg.text)
-        is Msg.SetStatus2 ->
-            state.copy(statusText2 = msg.text)
-        is Msg.SetMouseX -> {
-            val minPanelWidth = 20
-            val maxPanelWidth = (state.width - 2).coerceAtLeast(minPanelWidth)
-            val panelWidth = if(state.dragging) {
-                // state.splitterPosX=state.mouseX
-                state.mouseX
-            } else {
-                state.splitterPosX
-            }.coerceIn(minPanelWidth, maxPanelWidth)
-            state.copy(mouseX = msg.mouseX, splitterPosX = panelWidth)
-        }
-        Msg.Quit ->
-            state
-    }
