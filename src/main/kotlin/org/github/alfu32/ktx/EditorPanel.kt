@@ -20,7 +20,10 @@ fun EditorPanel(
         this.layout = layout
 
         onMouseDown = { e ->
-            dispatch(Msg.SetStatus("Editor click at ${e.globalX},${e.globalY}"))
+            dispatch(Msg.SetStatus("Editor click ${e.globalX},${e.globalY}->${state}"))
+        }
+        onMouseMove = { e ->
+            dispatch(Msg.SetStatus("Editor hovered ${e.globalX},${e.globalY}->${state}"))
         }
     }
 }

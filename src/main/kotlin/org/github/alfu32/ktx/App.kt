@@ -8,17 +8,21 @@ import org.github.alfu32.ktx.renderers.VtDomRenderer
 private const val MIN_PANEL_WIDTH = 40
 
 data class AppState(
-    val splitterWidth: Int = 40,
+    val splitterPosX: Int = 40,
     var dragging: Boolean = false,
     var dragStartMouseX: Int = 0,
-    val dragStartSplitterWidth: Int = 40,
+    val dragStartSplitterPosX: Int = 40,
     val statusText: String = ""
-)
+){
+    override fun toString():String {
+        return """sW:$splitterPosX,drg:$dragging,dSmX:$dragStartMouseX,dSsW:$dragStartSplitterPosX"""
+    }
+}
 
 sealed interface Msg {
     data class StartDrag(val mouseX: Int) : Msg
     data class Drag(val mouseX: Int) : Msg
-    object EndDrag : Msg
+    data class EndDrag(val mouseX: Int) : Msg
     data class SetStatus(val text: String) : Msg
     object Quit : Msg
 }
@@ -78,7 +82,7 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
             top = 0,
             right = w,
             bottom = 0            // height = 1
-        )
+        ).apply {  }
 
         val mainLayout = DomLayout(
             left = 0,
@@ -97,7 +101,7 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
         // main horizontal layout from state
         val minPanelWidth = 40
         val maxPanelWidth = (w - 2).coerceAtLeast(minPanelWidth)
-        val panelWidth = state.splitterWidth.coerceIn(minPanelWidth, maxPanelWidth)
+        val panelWidth = state.splitterPosX.coerceIn(minPanelWidth, maxPanelWidth)
 
         val mainHeight = h - 2
 
@@ -128,20 +132,38 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
             style = DomStyle(foreground = fg, background = bg_top),
             component = BoxComponent,
             text = " TUI Demo (q = quit) "
-        ).apply { layout = titleLayout }
+        ).apply {
+            layout = titleLayout
+
+            onMouseMove = { e ->
+                dispatch(Msg.SetStatus("Title hovered ${e.globalX},${e.globalY}->${state}"))
+            }
+        }
 
         val main = DomNode(
             id = "main",
             style = DomStyle(foreground = fg, background = bg_editor),
             component = BoxComponent
-        ).apply { layout = mainLayout }
+        ).apply {
+            layout = mainLayout
+
+            onMouseMove = { e ->
+                dispatch(Msg.SetStatus("main hovered ${e.globalX},${e.globalY}->${state}"))
+            }
+        }
 
         val statusBar = DomNode(
             id = "status",
             style = DomStyle(foreground = fg, background = bg_status),
             component = BoxComponent,
             text = state.statusText
-        ).apply { layout = statusLayout }
+        ).apply {
+            layout = statusLayout
+
+            onMouseMove = { e ->
+                dispatch(Msg.SetStatus("status hovered ${e.globalX},${e.globalY}->${state}"))
+            }
+        }
 
 // Panels
         val fileTree = FileTreePanel(state,DomStyle(foreground = fg, background = bg_panel), leftLayout, dispatch)
@@ -177,18 +199,23 @@ fun update(state: AppState, msg: Msg): AppState =
             state.copy(
                 dragging = true,
                 dragStartMouseX = msg.mouseX,
-                dragStartSplitterWidth = state.splitterWidth
+                dragStartSplitterPosX = state.splitterPosX
             )
 
         is Msg.Drag ->
             if (!state.dragging) state
             else {
                 val dx = msg.mouseX - state.dragStartMouseX
-                state.copy(splitterWidth = state.dragStartSplitterWidth + dx)
+                state.copy(splitterPosX = state.dragStartSplitterPosX + dx)
             }
 
-        Msg.EndDrag ->
-            state.copy(dragging = false)
+        is Msg.EndDrag -> {
+            val dx = msg.mouseX - state.dragStartMouseX
+            state.copy(
+                splitterPosX = state.dragStartSplitterPosX + dx,
+                dragging = false
+            )
+        }
 
         is Msg.SetStatus ->
             state.copy(statusText = msg.text)

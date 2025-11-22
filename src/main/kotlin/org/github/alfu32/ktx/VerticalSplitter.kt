@@ -22,12 +22,15 @@ fun Splitter(
 
         onMouseDown = { e ->
             dispatch(Msg.StartDrag(e.globalX))
+            dispatch(Msg.SetStatus("Splitter click ${e.globalX},${e.globalY}->${state}"))
         }
         onMouseMove = { e ->
-            if (state.dragging) dispatch(Msg.Drag(e.globalX))
+            dispatch(Msg.Drag(e.globalX))
+            dispatch(Msg.SetStatus("Splitter dragging ${e.globalX},${e.globalY}->${state}"))
         }
-        onMouseUp = { _ ->
-            if (state.dragging) dispatch(Msg.EndDrag)
+        onMouseUp = { e ->
+            dispatch(Msg.EndDrag(e.globalX))
+            dispatch(Msg.SetStatus("Splitter finished ${e.globalX},${e.globalY}->${state}"))
         }
     }
 }

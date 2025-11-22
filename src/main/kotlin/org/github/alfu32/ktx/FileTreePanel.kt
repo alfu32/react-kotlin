@@ -20,7 +20,10 @@ fun FileTreePanel(
         this.layout = layout
 
         onMouseDown = { e ->
-            dispatch(Msg.SetStatus("FileTree click at ${e.globalX},${e.globalY}"))
+            dispatch(Msg.SetStatus("FileTree click ${e.globalX},${e.globalY}->${state}"))
+        }
+        onMouseMove = { e ->
+            dispatch(Msg.SetStatus("FileTree hovered ${e.globalX},${e.globalY}->${state}"))
         }
     }
 }

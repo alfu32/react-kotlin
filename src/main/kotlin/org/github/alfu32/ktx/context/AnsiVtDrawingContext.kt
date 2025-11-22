@@ -258,11 +258,13 @@ class AnsiVtDrawingContext(
 
     private fun enableMouseTracking() {
         // Enable SGR mouse reporting
+        buffer.append("\u001B[?1002h") // button-event tracking
         buffer.append("\u001B[?1003h") // all-motion tracking
         buffer.append("\u001B[?1006h") // SGR extended mode
     }
 
     private fun disableMouseTracking() {
+        buffer.append("\u001B[?1002l")
         buffer.append("\u001B[?1003l")
         buffer.append("\u001B[?1006l")
     }
@@ -419,7 +421,7 @@ class AnsiVtDrawingContext(
 
     private fun handleSgrMouse(body: String) {
         // body is like "<b;x;yM" or "<b;x;ym"
-        val isPressOrDrag = body.endsWith("M")
+        val endsWithPress = body.endsWith("M")
         val withoutFinal = body.substring(0, body.length - 1)
         val parts = withoutFinal.removePrefix("<").split(";")
         if (parts.size != 3) return
@@ -439,13 +441,13 @@ class AnsiVtDrawingContext(
         val shift = (btnCode and 4) != 0
         val alt   = (btnCode and 8) != 0
         val ctrl  = (btnCode and 16) != 0
-
         val motion = (btnCode and 32) != 0
+        val noButton = (btnCode and 0b11) == 0b11
 
         val kind = when {
-            motion && isPressOrDrag -> VtMouseEventKind.Drag
-            motion && !isPressOrDrag -> VtMouseEventKind.Move
-            isPressOrDrag -> VtMouseEventKind.Press
+            motion && noButton -> VtMouseEventKind.Move
+            motion -> VtMouseEventKind.Drag
+            endsWithPress -> VtMouseEventKind.Press
             else -> VtMouseEventKind.Release
         }
 
