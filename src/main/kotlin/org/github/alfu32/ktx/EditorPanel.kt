@@ -24,6 +24,7 @@ fun EditorPanel(
         }
         onMouseMove = { e ->
             dispatch(Msg.SetStatus("Editor hovered ${e.globalX},${e.globalY}->${state}"))
+            dispatch(Msg.SetMouseX(e.globalX))
         }
     }
 }

@@ -12,10 +12,13 @@ data class AppState(
     var dragging: Boolean = false,
     var dragStartMouseX: Int = 0,
     val dragStartSplitterPosX: Int = 40,
-    val statusText: String = ""
+    val statusText: String = "",
+    val statusText2: String = "",
+    val mouseX: Int = 0,
+    val width: Int = 200
 ){
     override fun toString():String {
-        return """sW:$splitterPosX,drg:$dragging,dSmX:$dragStartMouseX,dSsW:$dragStartSplitterPosX"""
+        return """mouseX:${mouseX},sW:$splitterPosX,drg:$dragging,dSmX:$dragStartMouseX,dSsW:$dragStartSplitterPosX"""
     }
 }
 
@@ -24,6 +27,8 @@ sealed interface Msg {
     data class Drag(val mouseX: Int) : Msg
     data class EndDrag(val mouseX: Int) : Msg
     data class SetStatus(val text: String) : Msg
+    data class SetStatus2(val text: String) : Msg
+    data class SetMouseX(val mouseX: Int) : Msg
     object Quit : Msg
 }
 class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
@@ -99,9 +104,14 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
         )
 
         // main horizontal layout from state
-        val minPanelWidth = 40
+        val minPanelWidth = 20
         val maxPanelWidth = (w - 2).coerceAtLeast(minPanelWidth)
-        val panelWidth = state.splitterPosX//.coerceIn(minPanelWidth, maxPanelWidth)
+        val panelWidth = if(state.dragging) {
+            // state.splitterPosX=state.mouseX
+            state.mouseX
+        } else {
+            state.splitterPosX
+        }.coerceIn(minPanelWidth, maxPanelWidth)
 
         val mainHeight = h - 2
 
@@ -149,11 +159,25 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
 
             onMouseMove = { e ->
                 dispatch(Msg.SetStatus("main hovered ${e.globalX},${e.globalY}->${state}"))
+                dispatch(Msg.SetMouseX(e.globalX))
             }
         }
 
         val statusBar = DomNode(
             id = "status",
+            style = DomStyle(foreground = fg, background = bg_status),
+            component = BoxComponent,
+            text = "${state.statusText} | split=${panelWidth} drag=${state.dragging}"
+        ).apply {
+            layout = statusLayout
+
+            onMouseMove = { e ->
+                dispatch(Msg.SetStatus("status hovered ${e.globalX},${e.globalY}->${state}"))
+            }
+        }
+
+        val statusBar2 = DomNode(
+            id = "status2",
             style = DomStyle(foreground = fg, background = bg_status),
             component = BoxComponent,
             text = "${state.statusText} | split=${panelWidth} drag=${state.dragging}"
@@ -219,7 +243,19 @@ fun update(state: AppState, msg: Msg): AppState =
 
         is Msg.SetStatus ->
             state.copy(statusText = msg.text)
-
+        is Msg.SetStatus2 ->
+            state.copy(statusText2 = msg.text)
+        is Msg.SetMouseX -> {
+            val minPanelWidth = 20
+            val maxPanelWidth = (state.width - 2).coerceAtLeast(minPanelWidth)
+            val panelWidth = if(state.dragging) {
+                // state.splitterPosX=state.mouseX
+                state.mouseX
+            } else {
+                state.splitterPosX
+            }.coerceIn(minPanelWidth, maxPanelWidth)
+            state.copy(mouseX = msg.mouseX, splitterPosX = panelWidth)
+        }
         Msg.Quit ->
             state
     }

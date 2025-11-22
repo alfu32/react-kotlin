@@ -24,6 +24,7 @@ fun FileTreePanel(
         }
         onMouseMove = { e ->
             dispatch(Msg.SetStatus("FileTree hovered ${e.globalX},${e.globalY}->${state}"))
+            dispatch(Msg.SetMouseX(e.globalX))
         }
     }
 }
