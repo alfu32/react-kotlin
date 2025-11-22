@@ -101,7 +101,7 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
         // main horizontal layout from state
         val minPanelWidth = 40
         val maxPanelWidth = (w - 2).coerceAtLeast(minPanelWidth)
-        val panelWidth = state.splitterPosX.coerceIn(minPanelWidth, maxPanelWidth)
+        val panelWidth = state.splitterPosX//.coerceIn(minPanelWidth, maxPanelWidth)
 
         val mainHeight = h - 2
 
