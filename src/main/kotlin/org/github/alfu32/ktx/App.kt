@@ -3,233 +3,196 @@ package org.github.alfu32.ktx
 import org.github.alfu32.ktx.color.VtColor
 import org.github.alfu32.ktx.context.*
 import org.github.alfu32.ktx.vdom.*
+import org.github.alfu32.ktx.renderers.VtDomRenderer
 
 private const val MIN_PANEL_WIDTH = 40
 
 data class AppState(
-    var panelWidth: Int = MIN_PANEL_WIDTH,
+    val splitterWidth: Int = 40,
     var dragging: Boolean = false,
     var dragStartMouseX: Int = 0,
-    var dragStartPanelWidth: Int = MIN_PANEL_WIDTH,
-    var statusText: String = ""
+    val dragStartSplitterWidth: Int = 40,
+    val statusText: String = ""
 )
 
-/**
- * Application controller: handles events, layout, and status updates.
- */
-class AppController(
-    private val ctx: AnsiVtDrawingContext,
-    private val renderer: DomRenderer,
-    private val state: AppState,
-    private val titleBar: DomNode,
-    private val mainArea: DomNode,
-    private val leftPanel: DomNode,
-    private val separator: DomNode,
-    private val contentArea: DomNode,
-    private val statusBar: DomNode
-) : VtEventListener {
+sealed interface Msg {
+    data class StartDrag(val mouseX: Int) : Msg
+    data class Drag(val mouseX: Int) : Msg
+    object EndDrag : Msg
+    data class SetStatus(val text: String) : Msg
+    object Quit : Msg
+}
+class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
 
-    override fun onEvent(context: VtDrawingContext, event: VtEvent) {
-        when (event) {
-            is VtEvent.Mouse -> handleMouse(event)
-            is VtEvent.Key -> handleKey(event)
-            is VtEvent.Resize -> handleResize(event)
-        }
+    private var state = AppState()
+    private var renderer: VtDomRenderer? = null
+    private var running = true
 
-        // After app-level handling, pass to DOM to invoke node callbacks:
-        renderer.onEvent(context, event)
+    init {
+        ctx.setEventListener(this)         // <-- use the generic setter
+        ctx.onFrame = { frame() }
     }
 
-    private fun handleMouse(ev: VtEvent.Mouse) {
-        val targetNode = renderer.findTopMostNodeAt(ev.x, ev.y)
-        val targetId = targetNode?.id ?: "<none>"
-
-        state.statusText =
-            "MOUSE ${ev.kind} x=${ev.x} y=${ev.y} target=$targetId btn=${ev.button}"
-
-        // Drag behavior only cares about separator
-        val isSeparatorTarget = (targetNode === separator)
-
-        when (ev.kind) {
-            VtMouseEventKind.Press -> {
-                if (isSeparatorTarget) {
-                    state.dragging = true
-                    state.dragStartMouseX = ev.x
-                    state.dragStartPanelWidth = state.panelWidth
-                }
+    private fun dispatch(msg: Msg) {
+        when (msg) {
+            Msg.Quit -> {
+                running = false
+                ctx.stop()
             }
-            VtMouseEventKind.Release -> {
-                state.dragging = false
-            }
-            VtMouseEventKind.Drag, VtMouseEventKind.Move -> {
-                if (state.dragging) {
-                    val dx = ev.x - state.dragStartMouseX
-                    val newWidth = (state.dragStartPanelWidth + dx)
-                    val maxPanelWidth = (ctx.windowWidth - 2).coerceAtLeast(MIN_PANEL_WIDTH)
-                    state.panelWidth = newWidth.coerceIn(MIN_PANEL_WIDTH, maxPanelWidth)
-                }
+            else -> {
+                state = update(state, msg)
             }
         }
     }
 
-    private fun handleKey(ev: VtEvent.Key) {
-        state.statusText = "KEY type=${ev.key.type} ch=${ev.key.ch ?: ' '} ctrl=${ev.key.ctrl} alt=${ev.key.alt}"
-        // Quit on 'q'
-        if (ev.key.type == VtKeyType.Character && ev.key.ch == 'q') {
-            ctx.stop()
+    override fun onEvent(ctx: VtDrawingContext, event: VtEvent) {
+        // global shortcuts
+        if (event is VtEvent.Key &&
+            event.key.type == VtKeyType.Character &&
+            event.key.ch == 'q') {
+            dispatch(Msg.Quit)
+            return
         }
+
+        // let DOM event handlers run
+        renderer?.onEvent(ctx, event)
     }
+    fun appView(
+        state: AppState,
+        ctx: VtDrawingContext,
+        dispatch: (Msg) -> Unit
+    ): DomNode {
+        val root = DomNode(id = "root", component = BoxComponent)
+        val bg_top = VtColor.from(0x223388)
+        val bg_panel = VtColor.from(0x636fab)
+        val bg_splitter = VtColor.from(0x808080)
+        val bg_editor = VtColor.from(0x182460)
+        val bg_status = VtColor.from(0x4d4d4d)
+        val fg = VtColor.from(0xbebebb)
 
-    private fun handleResize(ev: VtEvent.Resize) {
-        // Keep panel width sane on resize
-        val maxPanelWidth = (ev.width - 2).coerceAtLeast(MIN_PANEL_WIDTH)
-        state.panelWidth = state.panelWidth.coerceIn(MIN_PANEL_WIDTH, maxPanelWidth)
-        state.statusText = "RESIZE ${ev.width}x${ev.height}"
-    }
+        val w = ctx.windowWidth-4
+        val h = ctx.windowHeight-4
 
-    /**
-     * Called once per frame by AnsiVtDrawingContext.onFrame.
-     * Computes layout + pushes status bar text + renders.
-     */
-    fun frame() {
-        val w = ctx.windowWidth
-        val h = ctx.windowHeight
-        if (w <= 0 || h <= 0) return
-
-        // --- vertical structure: title, main, status ---
-
-        titleBar.layout = DomLayout(
+        val titleLayout = DomLayout(
             left = 0,
             top = 0,
-            right = 0,
-            bottom = h - 1      // height 1
+            right = w,
+            bottom = 0            // height = 1
         )
 
-        mainArea.layout = DomLayout(
+        val mainLayout = DomLayout(
             left = 0,
             top = 1,
-            right = 0,
-            bottom = 1          // height = h - 2
+            right = w,
+            bottom = h - 1        // height = h-2
         )
 
-        statusBar.layout = DomLayout(
+        val statusLayout = DomLayout(
             left = 0,
             top = h - 1,
-            right = 0,
-            bottom = 0          // height 1 at bottom
+            right = w,
+            bottom = h - 1        // height = 1
         )
 
-        // --- horizontal structure inside mainArea ---
+        // main horizontal layout from state
+        val minPanelWidth = 40
+        val maxPanelWidth = (w - 2).coerceAtLeast(minPanelWidth)
+        val panelWidth = state.splitterWidth.coerceIn(minPanelWidth, maxPanelWidth)
 
-        val panelWidth = state.panelWidth.coerceIn(MIN_PANEL_WIDTH, (w - 2).coerceAtLeast(MIN_PANEL_WIDTH))
-        val separatorX = panelWidth
-        val contentLeft = panelWidth + 1
+        val mainHeight = h - 2
 
-        leftPanel.layout = DomLayout(
+        val leftLayout = DomLayout(
             left = 0,
             top = 0,
-            right = w - panelWidth,
-            bottom = 0
+            right = panelWidth-1,
+            bottom = mainHeight-1,
         )
 
-        separator.layout = DomLayout(
-            left = separatorX,
+        val splitterLayout = DomLayout(
+            left = panelWidth,
             top = 0,
-            right = w - (separatorX + 1),
-            bottom = 0
+            right = panelWidth,           // width = 1
+            bottom = mainHeight
         )
 
-        contentArea.layout = DomLayout(
-            left = contentLeft,
+        val rightLayout = DomLayout(
+            left = panelWidth + 1,
             top = 0,
-            right = 0,
-            bottom = 0
+            right = w - panelWidth -1,                // full remaining width inside main
+            bottom = mainHeight
         )
 
-        // Status bar text
-        statusBar.text = state.statusText
+        // components
+        val titleBar = DomNode(
+            id = "title",
+            style = DomStyle(foreground = fg, background = bg_top),
+            component = BoxComponent,
+            text = " TUI Demo (q = quit) "
+        ).apply { layout = titleLayout }
 
-        renderer.frame()
+        val main = DomNode(
+            id = "main",
+            style = DomStyle(foreground = fg, background = bg_editor),
+            component = BoxComponent
+        ).apply { layout = mainLayout }
+
+        val statusBar = DomNode(
+            id = "status",
+            style = DomStyle(foreground = fg, background = bg_status),
+            component = BoxComponent,
+            text = state.statusText
+        ).apply { layout = statusLayout }
+
+// Panels
+        val fileTree = FileTreePanel(state,DomStyle(foreground = fg, background = bg_panel), leftLayout, dispatch)
+        val splitter = Splitter(state,DomStyle(foreground = fg, background = bg_splitter), splitterLayout, dispatch)
+        val editor = EditorPanel(state,DomStyle(foreground = fg, background = bg_editor), rightLayout, dispatch)
+
+        root.addChild(titleBar)
+        root.addChild(main.apply {
+            addChild(fileTree)
+            addChild(splitter)
+            addChild(editor)
+        })
+        root.addChild(statusBar)
+
+        return root
+    }
+    fun frame() {
+        if (!running) return
+
+        val root = appView(state, ctx, ::dispatch)
+
+        // Recreate renderer each frame (simple; you can optimize later)
+        renderer = VtDomRenderer(ctx, root)
+        renderer!!.frame()
     }
 }
 
-fun buildAppDom(): Map<String, DomNode> {
-    val root = DomNode(id = "root")
 
-    val titleBar = root.addChild(
-        DomNode(
-            id = "title",
-            text = "  My TUI App  (drag separator, press 'q' to quit)",
-            style = DomStyle(
-                foreground = VtColor(255.toByte(), 255.toByte(), 255.toByte()),
-                background = VtColor(0.toByte(), 0.toByte(), 160.toByte()),
-                bold = true
+
+fun update(state: AppState, msg: Msg): AppState =
+    when (msg) {
+        is Msg.StartDrag ->
+            state.copy(
+                dragging = true,
+                dragStartMouseX = msg.mouseX,
+                dragStartSplitterWidth = state.splitterWidth
             )
-        )
-    )
 
-    val mainArea = root.addChild(
-        DomNode(
-            id = "main",
-            style = DomStyle(
-                foreground = VtColor(220.toByte(), 220.toByte(), 220.toByte()),
-                background = VtColor(0.toByte(), 0.toByte(), 0.toByte())
-            )
-        )
-    )
+        is Msg.Drag ->
+            if (!state.dragging) state
+            else {
+                val dx = msg.mouseX - state.dragStartMouseX
+                state.copy(splitterWidth = state.dragStartSplitterWidth + dx)
+            }
 
-    val leftPanel = mainArea.addChild(
-        DomNode(
-            id = "left-panel",
-            text = "Left panel",
-            style = DomStyle(
-                foreground = VtColor(255.toByte(), 255.toByte(), 255.toByte()),
-                background = VtColor(0.toByte(), 64.toByte(), 64.toByte())
-            )
-        )
-    )
+        Msg.EndDrag ->
+            state.copy(dragging = false)
 
-    val separator = mainArea.addChild(
-        DomNode(
-            id = "separator",
-            text = "│",  // vertical bar; will be clipped to column
-            style = DomStyle(
-                foreground = VtColor(255.toByte(), 255.toByte(), 0.toByte()),
-                background = VtColor(0.toByte(), 0.toByte(), 0.toByte()),
-                bold = true
-            )
-        )
-    )
+        is Msg.SetStatus ->
+            state.copy(statusText = msg.text)
 
-    val contentArea = mainArea.addChild(
-        DomNode(
-            id = "content",
-            text = "Main content area",
-            style = DomStyle(
-                foreground = VtColor(255.toByte(), 255.toByte(), 255.toByte()),
-                background = VtColor(16.toByte(), 16.toByte(), 16.toByte())
-            )
-        )
-    )
-
-    val statusBar = root.addChild(
-        DomNode(
-            id = "status",
-            text = "",
-            style = DomStyle(
-                foreground = VtColor(0.toByte(), 0.toByte(), 0.toByte()),
-                background = VtColor(192.toByte(), 192.toByte(), 192.toByte())
-            )
-        )
-    )
-
-    return mapOf(
-        "root" to root,
-        "title" to titleBar,
-        "main" to mainArea,
-        "left-panel" to leftPanel,
-        "separator" to separator,
-        "content" to contentArea,
-        "status" to statusBar
-    )
-}
+        Msg.Quit ->
+            state
+    }

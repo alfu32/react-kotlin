@@ -1,6 +1,5 @@
 package org.github.alfu32.ktx.context
 
-import org.github.alfu32.ktx.AppController
 import org.github.alfu32.ktx.color.VtColor
 import java.io.InputStream
 import java.io.PrintStream
@@ -12,13 +11,11 @@ class AnsiVtDrawingContext(
     private val input: InputStream = System.`in`,
     private val output: PrintStream = System.out
 ) : VtDrawingContext {
-
+    override var onFrame: ((VtDrawingContext) -> Unit)? = null
     fun setEventListener(l: VtEventListener) {
         this.listener = l
     }
 
-    lateinit var eventListener: AppController
-    override var onFrame: ((VtDrawingContext) -> Unit)? = null
 
     private val buffer = StringBuilder()
 
@@ -212,18 +209,13 @@ class AnsiVtDrawingContext(
             while (running) {
                 val frameStart = System.nanoTime()
 
-                // Process input -> events
                 readAndDispatchInput()
-
-                // Detect resize
                 updateTerminalSize(forceEvent = false)
 
-                // Let DOM (or any client) draw:
+                // let the app render for this frame
                 onFrame?.invoke(this)
 
-                // User code is expected to have drawn into buffer by now
                 flush()
-
                 _frameCount++
 
                 val elapsed = System.nanoTime() - frameStart

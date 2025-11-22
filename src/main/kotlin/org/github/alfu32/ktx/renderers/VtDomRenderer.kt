@@ -1,6 +1,6 @@
-package org.github.alfu32.ktx
+package org.github.alfu32.ktx.renderers
 
-import org.github.alfu32.ktx.components.BoxComponent
+import org.github.alfu32.ktx.BoxComponent
 import org.github.alfu32.ktx.context.*
 import org.github.alfu32.ktx.vdom.*
 
@@ -12,16 +12,16 @@ import org.github.alfu32.ktx.vdom.*
  *  - Missing margins default to 0.
  *  - The node fills the remaining space in parent after margins.
  */
-class DomRenderer(
+class VtDomRenderer(
     private val ctx: VtDrawingContext,
     var root: DomNode
 ) : VtEventListener {
 
     private val hitList = mutableListOf<Pair<DomNode, Rect>>()
-    private val defaultComponent: DomComponent = BoxComponent
 
     fun frame() {
         hitList.clear()
+
         val rootRect = Rect(
             x = 0,
             y = 0,
@@ -36,45 +36,57 @@ class DomRenderer(
         ctx.flush()
     }
 
-    // Exposed so components can draw children
+    // Called by BoxComponent (and other components) to render children
     internal fun renderChildren(parent: DomNode) {
         for (child in parent.children) {
             drawNode(child)
         }
     }
 
-    // Public hit-test used by your controller
-    fun findTopMostNodeAt(x: Int, y: Int): DomNode? =
-        hitList.lastOrNull { (_, rect) -> rect.contains(x, y) }?.first
+    private fun drawNode(node: DomNode) {
+        val comp = node.component ?: BoxComponent
+        comp.render(node, ctx, this)
+    }
 
-    // ---------- layout ----------
+    // ========== LAYOUT ==========
 
     private fun layoutNode(node: DomNode, parentRect: Rect) {
-        val comp = node.component ?: defaultComponent
-        val rect = comp.layout(node, parentRect, ctx)
+        val l = node.layout.left
+        val t = node.layout.top
+        val r = node.layout.right
+        val b = node.layout.bottom
 
+        // Position in absolute screen coords
+        val x = parentRect.x + l
+        val y = parentRect.y + t
+
+        // Raw size from box coords
+        var width = (r - l + 1).coerceAtLeast(0)
+        var height = (b - t + 1).coerceAtLeast(0)
+
+        // Clamp to parent rect so we don't overflow
+        val maxWidthInParent = (parentRect.width - l).coerceAtLeast(0)
+        val maxHeightInParent = (parentRect.height - t).coerceAtLeast(0)
+        width = width.coerceAtMost(maxWidthInParent)
+        height = height.coerceAtMost(maxHeightInParent)
+
+        val rect = Rect(x, y, width, height)
         node.bounds = rect
         hitList += node to rect
 
-        // Children use node's rect as their parent rect (component can encode more logic if desired)
+        // Children layout inside this node's rect
         for (child in node.children) {
             layoutNode(child, rect)
         }
     }
 
-    // ---------- drawing ----------
 
-    private fun drawNode(node: DomNode) {
-        val comp = node.component ?: defaultComponent
-        comp.render(node, ctx, this)
-    }
+    // ========== EVENTS ==========
 
-    // ---------- events ----------
-
-    override fun onEvent(ctxFrom: VtDrawingContext, event: VtEvent) {
+    override fun onEvent(ctx: VtDrawingContext, event: VtEvent) {
         when (event) {
-            is VtEvent.Mouse -> handleMouse(event)
-            is VtEvent.Key -> handleKey(event)
+            is VtEvent.Mouse  -> handleMouse(event)
+            is VtEvent.Key    -> handleKey(event)
             is VtEvent.Resize -> handleResize(event)
         }
     }
@@ -83,15 +95,10 @@ class DomRenderer(
         val hit = hitList.lastOrNull { (_, rect) -> rect.contains(ev.x, ev.y) } ?: return
         val (node, rect) = hit
 
-        val comp = node.component ?: defaultComponent
-        if (comp.handleEvent(node, ev, ctx)) {
-            // component fully handled it
-            return
-        }
-
         val localX = ev.x - rect.x
         val localY = ev.y - rect.y
-        val domEvent = DomMouseEvent(
+
+        val domEv = DomMouseEvent(
             localX = localX,
             localY = localY,
             globalX = ev.x,
@@ -100,27 +107,21 @@ class DomRenderer(
         )
 
         when (ev.kind) {
-            VtMouseEventKind.Press -> node.onMouseDown?.invoke(domEvent)
-            VtMouseEventKind.Release -> node.onMouseUp?.invoke(domEvent)
+            VtMouseEventKind.Press   -> node.onMouseDown?.invoke(domEv)
+            VtMouseEventKind.Release -> node.onMouseUp?.invoke(domEv)
             VtMouseEventKind.Move,
-            VtMouseEventKind.Drag -> node.onMouseMove?.invoke(domEvent)
+            VtMouseEventKind.Drag    -> node.onMouseMove?.invoke(domEv)
         }
     }
 
     private fun handleKey(ev: VtEvent.Key) {
-        // Simple model: send keys to root node's component first
-        val comp = root.component ?: defaultComponent
-        if (comp.handleEvent(root, ev, ctx)) return
-
+        // Simple: send to root only for now
         root.onKey?.invoke(DomKeyEvent(ev.key, ev))
     }
 
     private fun handleResize(ev: VtEvent.Resize) {
-        val comp = root.component ?: defaultComponent
-        if (comp.handleEvent(root, ev, ctx)) return
-
-        val domEvent = DomResizeEvent(ev.width, ev.height, ev)
-        broadcastResize(root, domEvent)
+        val domEv = DomResizeEvent(ev.width, ev.height, ev)
+        broadcastResize(root, domEv)
     }
 
     private fun broadcastResize(node: DomNode, ev: DomResizeEvent) {
@@ -130,4 +131,3 @@ class DomRenderer(
         }
     }
 }
-

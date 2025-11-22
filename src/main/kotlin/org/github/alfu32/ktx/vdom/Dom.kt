@@ -5,10 +5,10 @@ import org.github.alfu32.ktx.context.VtEvent
 import org.github.alfu32.ktx.context.VtKeyEvent
 
 data class DomLayout(
-    val left: Int? = null,
-    val top: Int? = null,
-    val right: Int? = null,
-    val bottom: Int? = null
+    val left: Int,
+    val top: Int,
+    val right: Int,
+    val bottom: Int
 )
 
 /**
@@ -56,7 +56,7 @@ data class Rect(
 class DomNode(
     val id: String? = null,
     var text: String = "",
-    var layout: DomLayout = DomLayout(),
+    var layout: DomLayout = DomLayout(0,0,200,120),
     var style: DomStyle = DomStyle(),
     var component: DomComponent? = null    // <= NEW
 ) {
