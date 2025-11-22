@@ -395,6 +395,107 @@ fun listOfCounters(tree: ComponentTreeManager, values: List<Int>): DOMNode =
         children = values.map { v -> counterComponent(tree, key = v.toString()) }
     )
 
+/* =====================================================================
+   APP DEMO (header + sidebar + splitter + content + status)
+   Uses HookContext.useState for per-instance state.
+   ===================================================================== */
+
+fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
+    renderComponent(tree) {
+        // --- Global-ish app state stored in hook slots
+        val (splitterPos, setSplitterPos) = useState { 40 }
+        val (dragging, setDragging) = useState { false }
+        val (dragStartX, setDragStartX) = useState { 0 }
+        val (dragStartSplit, setDragStartSplit) = useState { splitterPos }
+        val (status, setStatus) = useState { "Ready" }
+
+        // --- Layout math
+        val minPanelWidth = 20
+        val maxPanelWidth = (cols - 4).coerceAtLeast(minPanelWidth)
+        val clampedSplit = splitterPos.coerceIn(minPanelWidth, maxPanelWidth)
+        val mainHeight = rows - 2
+
+        // --- Components
+        val header = DOMNode(
+            tag = "header",
+            id = "header",
+            text = " Kotlin TUI Demo (q=quit) ",
+            style = StyleSet.parse("left:0; top:0; right:${cols - 1}; bottom:0; fg:#bebebb; bg:#223388")
+        )
+
+        val sidebar = DOMNode(
+            tag = "div",
+            id = "sidebar",
+            text = "File tree\n[placeholder]",
+            style = StyleSet.parse("left:0; top:0; right:${clampedSplit - 1}; bottom:${mainHeight - 1}; fg:#bebebb; bg:#636fab"),
+            onMouseDown = { ev ->
+                setStatus("Sidebar click @${ev.x},${ev.y}")
+            }
+        )
+
+        // Splitter with simple drag logic in-place
+        val splitter = DOMNode(
+            tag = "div",
+            id = "splitter",
+            text = "│",
+            style = StyleSet.parse("left:$clampedSplit; top:0; right:$clampedSplit; bottom:${mainHeight - 1}; fg:#bebebb; bg:#808080"),
+            onMouseDown = { ev ->
+                val mx = ev.x ?: return@DOMNode
+                setDragging(true)
+                setDragStartX(mx)
+                setDragStartSplit(clampedSplit)
+                setStatus("Splitter grab @${ev.x},${ev.y}")
+            },
+            onMouseMove = { ev ->
+                val mx = ev.x ?: return@DOMNode
+                if (dragging) {
+                    val dx = mx - dragStartX
+                    setSplitterPos((dragStartSplit + dx).coerceIn(minPanelWidth, maxPanelWidth))
+                    setStatus("Splitter drag ${mx},${ev.y}")
+                }
+            },
+            onMouseUp = { ev ->
+                val mx = ev.x ?: return@DOMNode
+                val dx = mx - dragStartX
+                setSplitterPos((dragStartSplit + dx).coerceIn(minPanelWidth, maxPanelWidth))
+                setDragging(false)
+                setStatus("Splitter release ${mx},${ev.y}")
+            }
+        )
+
+        val content = DOMNode(
+            tag = "div",
+            id = "content",
+            text = "Editor\n[placeholder]",
+            style = StyleSet.parse("left:${clampedSplit + 1}; top:0; right:${cols - 1}; bottom:${mainHeight - 1}; fg:#bebebb; bg:#182460"),
+            onMouseDown = { ev ->
+                setStatus("Content click @${ev.x},${ev.y}")
+            }
+        )
+
+        val statusBar = DOMNode(
+            tag = "footer",
+            id = "status",
+            text = "$status | split=$clampedSplit drag=$dragging",
+            style = StyleSet.parse("left:0; top:${rows - 1}; right:${cols - 1}; bottom:${rows - 1}; fg:#bebebb; bg:#4d4d4d")
+        )
+
+        val mainArea = DOMNode(
+            tag = "div",
+            id = "main-area",
+            style = StyleSet.parse("left:0; top:1; right:${cols - 1}; bottom:${rows - 2}"),
+            children = listOf(sidebar, splitter, content)
+        )
+
+        // Root composes everything
+        DOMNode(
+            tag = "root",
+            id = "root",
+            style = StyleSet.parse("left:0; top:0; right:${cols - 1}; bottom:${rows - 1}"),
+            children = listOf(header, mainArea, statusBar)
+        )
+    }
+
 
 /* =====================================================================
    END OF FILE
