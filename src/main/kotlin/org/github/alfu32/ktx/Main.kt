@@ -1395,7 +1395,7 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
             text = " TUI Demo (q = quit) "
         ).apply {
             onMouseMove = { e ->
-                dispatch("""{"type":"status","text":"Title hovered ${'$'}{e.globalX},${'$'}{e.globalY}->${state}"}""")
+                dispatch("""{"type":"status","text":"Title hovered ${e.globalX},${e.globalY}->${state}"}""")
             }
         }
 
@@ -1405,7 +1405,7 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
             component = BoxComponent
         ).apply {
             onMouseMove = { e ->
-                dispatch("""{"type":"status","text":"main hovered ${'$'}{e.globalX},${'$'}{e.globalY}->${state}"}""")
+                dispatch("""{"type":"status","text":"main hovered ${e.globalX},${e.globalY}->${state}"}""")
             }
         }
 
@@ -1416,7 +1416,7 @@ class App(private val ctx: AnsiVtDrawingContext) : VtEventListener {
             text = "${state.statusText} | split=${panelWidth} drag=${state.dragging}"
         ).apply {
             onMouseMove = { e ->
-                dispatch("""{"type":"status","text":"status hovered ${'$'}{e.globalX},${'$'}{e.globalY}->${state}"}""")
+                dispatch("""{"type":"status","text":"status hovered ${e.globalX},${e.globalY}->${state}"}""")
             }
         }
 
