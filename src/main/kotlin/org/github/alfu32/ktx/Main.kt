@@ -379,18 +379,36 @@ class AnsiCanvasRenderer(
         }
         val s = seq.toString()
 
-        // Mouse Click: <btn;x;yM or <btn;x;ym
-        if (s.endsWith("M") || s.endsWith("m")) {
-            val body = s.dropLast(1).split(';')
-            if (body.size >= 3 && body[0].startsWith("<")) {
-                val btn = body[0].drop(1).toIntOrNull() ?: 0
-                val x = body[1].toIntOrNull()?.minus(1) ?: 0
-                val y = body[2].toIntOrNull()?.minus(1) ?: 0
-                val down = s.endsWith("M")
-                return if (down)
-                    UIEvent("mouse_down", x=x, y=y, button=btn)
-                else
-                    UIEvent("mouse_up", x=x, y=y, button=btn)
+        // Mouse SGR: <btn;x;yM or <btn;x;ym
+        if ((s.endsWith("M") || s.endsWith("m")) && s.startsWith("<")) {
+            val parts = s.dropLast(1).split(';')
+            if (parts.size >= 3) {
+                val btnCode = parts[0].drop(1).toIntOrNull() ?: return null
+                val x = parts[1].toIntOrNull()?.minus(1) ?: return null
+                val y = parts[2].toIntOrNull()?.minus(1) ?: return null
+                val press = s.endsWith("M")
+                val motion = (btnCode and 32) != 0
+                val baseBtn = btnCode and 0b11
+                val scroll = btnCode and 0b111
+
+                // Scroll wheel
+                if (scroll == 64) return UIEvent("mouse_scroll", x = x, y = y, scrollDelta = 1)
+                if (scroll == 65) return UIEvent("mouse_scroll", x = x, y = y, scrollDelta = -1)
+
+                val button = when (baseBtn) {
+                    0 -> 0
+                    1 -> 1
+                    2 -> 2
+                    else -> null
+                }
+
+                val kind = when {
+                    motion && press -> "mouse_drag"
+                    motion && !press -> "mouse_move"
+                    press -> "mouse_down"
+                    else -> "mouse_up"
+                }
+                return UIEvent(kind, x = x, y = y, button = button)
             }
         }
 
