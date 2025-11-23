@@ -403,8 +403,7 @@ class AnsiCanvasRenderer(
                 }
 
                 val kind = when {
-                    motion && press -> "mouse_drag"
-                    motion && !press -> "mouse_move"
+                    motion -> "mouse_move"      // treat any motion as move
                     press -> "mouse_down"
                     else -> "mouse_up"
                 }
@@ -725,7 +724,8 @@ private fun dispatchEventToDom(node: DOMNode, event: UIEvent, parentX: Int, pare
     when (event.kind) {
         "mouse_down"   -> if (inside) node.onMouseDown?.invoke(event)
         "mouse_up"     -> if (inside) node.onMouseUp?.invoke(event)
-        "mouse_move"   -> if (inside) node.onMouseMove?.invoke(event)
+        "mouse_move",
+        "mouse_drag"   -> if (inside) node.onMouseMove?.invoke(event)
         "mouse_scroll" -> if (inside) node.onMouseScroll?.invoke(event)
         "key_down"     -> node.onKeyDown?.invoke(event)
         "key_up"       -> node.onKeyUp?.invoke(event)
@@ -857,23 +857,6 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
                 setDragStartSplit(clampedSplit)
                 setStatus("Splitter grab @${ev.x},${ev.y}")
             },
-            onMouseMove = { ev ->
-                val mx = ev.x ?: return@DOMNode
-                if (dragging) {
-                    val dx = mx - dragStartX
-                    setSplitterPos((dragStartSplit + dx).coerceIn(minPanelWidth, maxPanelWidth))
-                    setStatus("Splitter drag ${mx},${ev.y}")
-                } else {
-                    setStatus("$statText,content,splitter,x${ev.x},y${ev.y}")
-                }
-            },
-            onMouseUp = { ev ->
-                val mx = ev.x ?: return@DOMNode
-                val dx = mx - dragStartX
-                setSplitterPos((dragStartSplit + dx).coerceIn(minPanelWidth, maxPanelWidth))
-                setDragging(false)
-                setStatus("Splitter release ${mx},${ev.y}")
-            }
         )
 
         val content = DOMNode(
@@ -902,7 +885,22 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             style = StyleSet.parse("left:0; top:1; right:${cols - 1}; bottom:${rows - 2}"),
             children = listOf(sidebar, splitter, content),
             onMouseMove = {ev ->
-                setStatus("$statText,div,hover,x${ev.x},y${ev.y}")
+
+                val mx = ev.x ?: return@DOMNode
+                if (dragging) {
+                    val dx = mx - dragStartX
+                    setSplitterPos((dragStartSplit + dx).coerceIn(minPanelWidth, maxPanelWidth))
+                    setStatus("Splitter drag ${mx},${ev.y}")
+                } else {
+                    setStatus("$statText,main-area,x${ev.x},y${ev.y}")
+                }
+            },
+            onMouseUp = { ev ->
+                val mx = ev.x ?: return@DOMNode
+                val dx = mx - dragStartX
+                setSplitterPos((dragStartSplit + dx).coerceIn(minPanelWidth, maxPanelWidth))
+                setDragging(false)
+                setStatus("Splitter release ${mx},${ev.y}")
             }
         )
 
