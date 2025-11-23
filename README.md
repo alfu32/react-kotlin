@@ -1,141 +1,150 @@
+---
+
+# Terminal UI Reactive Framework (Kotlin)
+
+A compact but powerful reactive UI framework for **VT/ANSI terminal applications**.
+Designed with:
+
+* Declarative components
+* React-like hooks
+* Full redraw on each frame
+* Deterministic component identity
+* Explicit event dispatch
+* Pluggable renderer interfaces
+* Easy testability through a string snapshot renderer
+
+All of this lives in **a single Kotlin file**, with clear block-structured regions.
 
 ---
 
-# **Terminal UI Reactive Framework (Kotlin)**
-
-A lightweight, pure-Kotlin, fully reactive terminal UI framework modeled on functional components, hooks, and declarative DOM trees.
-Supports rendering to VT-compatible terminal canvases, component state, event handling, and deterministic identity across re-renders.
-
----
-
-# **Table of Contents**
+# Table of Contents
 
 1. [Overview](#overview)
 2. [Goals](#goals)
-3. [Non-Goals / Limitations](#limitations)
+3. [Non-Goals](#non-goals)
 4. [Architecture](#architecture)
+5. [Functional Components](#functional-components)
+6. [State Hooks](#state-hooks)
+7. [DOM Nodes](#dom-nodes)
+8. [Style System](#style-system)
+9. [Layout Model](#layout-model)
+10. [Event System](#event-system)
+11. [Renderers](#renderers)
 
-   * [Render Loop](#render-loop)
-   * [Component Identity](#component-identity)
-   * [Hooks](#hooks)
-   * [DOM Nodes](#dom-nodes)
-   * [Style System](#style-system)
-   * [Renderer Interface](#renderer-interface)
-   * [Unified Event Model](#unified-event-model)
-5. [Layout Model (Absolute-Edge)](#layout-model)
-6. [Event Dispatch Semantics](#event-dispatch-semantics)
-7. [Creating Components](#creating-components)
-
-   * [State Management](#state-management)
-   * [Composition](#composition)
-   * [List Rendering / Keys](#list-rendering)
-8. [Building a VT Application (Boilerplate)](#boilerplate)
-9. [Examples](#examples)
-10. [Testing](#testing)
-11. [Extending the Framework](#extending-the-framework)
+    * [AnsiCanvasRenderer](#ansicanvasrenderer)
+    * [StringSnapshotRenderer](#stringsnapshotrenderer)
+    * [NoopRenderer](#nooprenderer)
+12. [Application Runtime (`runApp`)](#application-runtime-runapp)
+13. [Building an App](#building-an-app)
+14. [Testing](#testing)
+15. [Extending the Framework](#extending-the-framework)
 
 ---
 
-# **Overview**
+# Overview
 
-This framework provides:
+This framework provides a **reactive, component-based terminal UI** system using:
 
-* Declarative functional components
-* React-style `useState` hook
-* Component identity across renders
-* A DOM-like tree for terminal UI
-* A pluggable `CanvasRenderer` interface
-* Full mouse/keyboard/resize event handling
-* A stylesheet system with hierarchical style merging
-* Absolute-edge layout (top/left/bottom/right)
-* Hit-testing and focus propagation
-* Deterministic rendering and event dispatch
+* Declarative components that return a **DOMNode tree**
+* A `useState` hook for local component state
+* Full re-rendering every frame (no diffing)
+* Component identity preserved via call-site hashing
+* Explicit terminal drawing via a pluggable `CanvasRenderer`
+* Unified event data structure
+* Mouse, keyboard, and resize support
+* Surface-level stylesheet system
+* Absolute-edge layout (no automatic layout)
 
-The framework never mutates or diff-patches nodes—each render produces a **fresh DOM tree**, and identity is preserved via component instances.
-
----
-
-# **Goals**
-
-* Keep core small and deterministic
-* Clean functional API for component authors
-* Zero magic layout rules (you control coordinates)
-* Renderer-agnostic (back buffer, ANSI renderer, mock, etc.)
-* Correct identity and state across full-tree re-render
-* Explicit architecture: nothing hidden, nothing implicit
+The design emphasizes **predictability**, **determinism**, and **explicit control**.
 
 ---
 
-# **Limitations**
+# Goals
 
-* **No automatic layout engine**
-  You must explicitly position nodes via styles.
-
-* **No diffing**
-  Full re-render every frame.
-
-* **No async hooks or effects**
-  Future extension.
-
-* **Focus model is minimal**
-  You can extend it easily.
-
-* **Requires a real renderer implementation**
-  Provided file defines only the interface, not ANSI renderer.
+* Simple mental model similar to React’s “pure function components”
+* Zero hidden behaviors
+* Suitable for terminal environments (Termux, Linux console, SSH, etc.)
+* Easy to test (snapshot renderer)
+* Explicit lifecycle control (enter/exit terminal modes)
+* Deterministic state identity
 
 ---
 
-# **Architecture**
+# Non-Goals
 
-## Render Loop
-
-The runtime performs:
-
-1. Poll event from renderer (blocking or not).
-2. Dispatch event to DOM tree (hit-test, focus rules).
-3. Begin new frame.
-4. Build entire component tree by evaluating functional components.
-5. End frame → finalize component instance mapping.
-6. Clear renderer.
-7. Draw DOM tree.
-8. Flush renderer output.
-
-Repeat forever.
+* No layout engine (no flexbox, grid, constraints, etc.)
+* No partial diffing (full re-render each frame)
+* No cross-thread async hooks
+* No built-in widgets library
+* No retained-mode graphics
 
 ---
 
-## Component Identity
+# Architecture
 
-Because every frame re-creates the DOM, the framework stores component state in **ComponentInstance** objects keyed by:
+The architecture revolves around these components:
 
-* call site ID (hash of line number)
-* parent instance
-* user-provided key (for lists)
-* child position
+* **ComponentTreeManager**
+  Manages component identity and hook slot storage.
 
-This ensures stable identity across renders, even inside loops.
+* **renderComponent**
+  Applies a component with identity.
+
+* **DOMNode**
+  Pure data object representing terminal UI.
+
+* **StyleSet / StyleSheet**
+  Optional CSS-like styling system.
+
+* **CanvasRenderer**
+  Abstract interface controlling drawing + event polling + terminal lifecycle.
+
+* **runApp()**
+  The main runtime loop:
+
+    * poll events
+    * dispatch events
+    * rebuild tree
+    * draw tree
+    * handle exit conditions
 
 ---
 
-## Hooks
+# Functional Components
 
-Only one hook exists currently:
-
-### `useState(initial: () -> T): Pair<T, (T)->Unit>`
-
-* Must be called in the same order each render.
-* One slot per hook call in component instance.
-* Purely functional interface.
-
-Example:
+A component is a *pure function* returning a DOM tree:
 
 ```kotlin
-val (count, setCount) = useState { 0 }
+fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
+    renderComponent(tree) {
+        // return tree of DOMNode
+    }
 ```
+
+Each call is stateless — all state lives in ComponentInstance objects.
 
 ---
 
-## DOM Nodes
+# State Hooks
+
+The framework supports:
+
+```kotlin
+val (value, setValue) = useState { initialValue }
+```
+
+* Hook ordering determines which slot is used
+* Identity assigned based on:
+
+    * parent component
+    * call-site hash
+    * optional key for list children
+
+---
+
+# DOM Nodes
+
+The root object of the UI tree.
 
 ```kotlin
 data class DOMNode(
@@ -161,46 +170,52 @@ data class DOMNode(
 
 ---
 
-## Style System
+# Style System
 
-You provided a CSS-inspired style block system:
-
-* Hierarchical selectors split by dots
-* `mergeFrom()` merges non-null fields
-* `null = 0` rule for coordinates
-* Only *absolute edges*: `top`, `left`, `bottom`, `right`
-* Coordinates are **relative to parent**
-
----
-
-## Renderer Interface
+A minimal CSS-like styling system:
 
 ```kotlin
-interface CanvasRenderer {
-    fun clear()
-    fun setColor(r: Int, g: Int, b: Int)
-    fun setBackgroundColor(r: Int, g: Int, b: Int)
-    fun bold(enabled: Boolean)
-    fun italic(enabled: Boolean)
-    fun underline(enabled: Boolean)
-    fun blink(enabled: Boolean)
-    fun drawRect(x: Int, y: Int, width: Int, height: Int)
-    fun drawText(x: Int, y: Int, text: String)
-    fun setCursorPosition(x: Int, y: Int)
-    fun flush()
-
-    fun pollEvent(): UIEvent?
-    fun tryPollEvent(): UIEvent?
-}
+data class StyleSet(
+    var top: Int? = null,
+    var left: Int? = null,
+    var bottom: Int? = null,
+    var right: Int? = null,
+    var bg: Color? = null,
+    var fg: Color? = null,
+    var textDecoration: String? = null,
+    var borderSet: String? = null,
+    var lineSet: String? = null
+)
 ```
 
-You will plug in a real terminal renderer here (ANSI, Termux, etc.).
+* Coordinates are **relative to parent**
+* `null = 0`
+* No layout solving
+* Direct absolute edges
 
 ---
 
-## Unified Event Model
+# Layout Model
 
-All events share a single structure:
+Each node defines an explicit box:
+
+```
+x1 = parentX + left
+y1 = parentY + top
+x2 = parentX + right
+y2 = parentY + bottom
+
+width  = x2 - x1
+height = y2 - y1
+```
+
+No layout inference is ever applied.
+
+---
+
+# Event System
+
+All events share **one unified structure**:
 
 ```kotlin
 data class UIEvent(
@@ -218,158 +233,135 @@ data class UIEvent(
 
 Examples:
 
-* `UIEvent("mouse_down", x=10, y=5, button=1)`
-* `UIEvent("key_down", key="Enter")`
-* `UIEvent("resize", cols=120, rows=40)`
+```
+mouse_down(x=10, y=5, button=0)
+key_down(key="q")
+resize(cols=120, rows=40)
+```
 
 ---
 
-# **Layout Model**
+# Renderers
 
-This is very simple and explicit:
-
-* All layout is *absolute* relative to parent anchor.
-* `null = 0`.
-
-For node N with style:
-
-```
-top: T
-left: L
-bottom: B
-right: R
-```
-
-All relative:
-
-```
-x1 = parentX + L
-y1 = parentY + T
-x2 = parentX + R
-y2 = parentY + B
-width  = x2 - x1
-height = y2 - y1
-```
-
-If you supply inconsistent values, it is your responsibility.
-
----
-
-# **Event Dispatch Semantics**
-
-### Mouse
-
-Hit-tested against node rectangle.
-Deepest-first traversal (children get event first).
-
-### Keyboard
-
-Delivered to **all nodes with onKeyDown/onKeyUp**.
-(You can implement focus filtering as needed.)
-
-### Resize
-
-Delivered to all nodes with `onResize`.
-
----
-
-# **Creating Components**
-
-A component is a **pure function** returning a DOMNode:
+All renderers implement:
 
 ```kotlin
-fun counterComponent(tree: ComponentTreeManager, key: String? = null): DOMNode =
-    renderComponent(tree, key) {
-        val (count, setCount) = useState { 0 }
-        Button(
-            text = "Count: $count",
-            onClick = { _ -> setCount(count + 1) }
-        )
-    }
+interface CanvasRenderer {
+    fun clear()
+    fun setColor(r: Int, g: Int, b: Int)
+    fun setBackgroundColor(r: Int, g: Int, b: Int)
+    fun bold(enabled: Boolean)
+    fun italic(enabled: Boolean)
+    fun underline(enabled: Boolean)
+    fun blink(enabled: Boolean)
+    fun drawRect(x: Int, y: Int, width: Int, height: Int)
+    fun drawText(x: Int, y: Int, text: String)
+    fun setCursorPosition(x: Int, y: Int)
+    fun flush()
+
+    fun pollEvent(): UIEvent?
+    fun tryPollEvent(): UIEvent?
+
+    fun enableMouseTracking()
+    fun disableMouseTracking()
+    fun hideCursor()
+    fun showCursor()
+    fun resetAttributes()
+
+    fun isRunning(): Boolean
+    fun requestExit()
+    fun shutdown()
+}
 ```
 
 ---
 
-## State Management
+# **AnsiCanvasRenderer**
 
-`useState` persists per component instance:
+A true VT terminal renderer:
+
+* ANSI cursor movement
+* RGB colors
+* Bold/italic/underline/blink
+* Rectangles (filled)
+* Text drawing
+* Mouse events (1000/1002/1003/1006 modes)
+* Keyboard events
+* Resize events
+* Cursor hide/show
+* Attribute reset
+* Full cleanup on shutdown
+
+This is used for **real terminal UIs**.
+
+---
+
+# **StringSnapshotRenderer**
+
+For testing:
+
+* Renders text and rectangles into an in-memory 2D buffer
+* No terminal control
+* No events
+* `snapshot()` returns a deterministic string
+* Ideal for snapshot tests
+
+---
+
+# **NoopRenderer**
+
+A void renderer:
+
+* No drawing
+* No events
+* `isRunning()` can be externally turned off
+* Ideal for logic-only tests or headless usage
+
+---
+
+# Application Runtime (`runApp`)
+
+This is the **main loop** used by all applications.
+
+It contains:
+
+* Safe event polling
+* Hardwired exit triggers
+* Time-based failsafe
+* Dead-cycle failsafe
+* Guaranteed cleanup in `finally`
+* Full redraw every frame
+
+Example signature:
 
 ```kotlin
-val (name, setName) = useState { "hello" }
+runApp(renderer) { tree: ComponentTreeManager ->
+    App(tree, renderer.cols(), renderer.rows())
+}
 ```
 
 ---
 
-## Composition
+# **Building an App**
 
-Components can nest freely:
-
-```kotlin
-fun panel(tree: ComponentTreeManager): DOMNode =
-    DOMNode(
-        tag = "panel",
-        style = StyleSet(top=0, left=0, bottom=20, right=80),
-        children = listOf(
-            counterComponent(tree),
-            counterComponent(tree)
-        )
-    )
-```
-
-Each call is a distinct instance with distinct state.
-
----
-
-## List Rendering (Keys)
-
-Keys preserve identity across reorderings:
-
-```kotlin
-fun listOfCounters(tree: ComponentTreeManager, nums: List<Int>) =
-    DOMNode(
-        tag = "list",
-        children = nums.map { n ->
-            counterComponent(tree, key = n.toString())
-        }
-    )
-```
-
----
-
-# **Boilerplate: Building a VT Application**
-
-Below is the minimal app skeleton you will use.
+Your real application entry point now looks like:
 
 ```kotlin
 fun main() {
-    val tree = ComponentTreeManager()
-    val renderer = MyAnsiRenderer() // you implement this
-
-    while (true) {
-        val event = renderer.pollEvent()
-        if (event != null) {
-            dispatchEvent(tree, event) // you call dispatchEventToDom on root
-        }
-
-        tree.beginFrame()
-        val root = app(tree)        // Your root component
-        tree.endFrame()
-
-        renderer.clear()
-        renderDomTree(renderer, root)
-        renderer.flush()
+    val renderer = NoopRenderer(cols = 120, rows = 40)
+    runApp(renderer){ tree : ComponentTreeManager ->
+        App(tree, renderer.cols(), renderer.rows())
     }
 }
 ```
 
-### Root Component Example
+Where `App` is your root component:
 
 ```kotlin
-fun app(tree: ComponentTreeManager): DOMNode =
+fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
     renderComponent(tree) {
         DOMNode(
             tag = "root",
-            style = StyleSet(top=0, left=0, right=80, bottom=24),
             children = listOf(
                 counterComponent(tree, key="c1"),
                 counterComponent(tree, key="c2"),
@@ -379,82 +371,50 @@ fun app(tree: ComponentTreeManager): DOMNode =
     }
 ```
 
-This example demonstrates:
+This demonstrates:
 
-* composition
-* two instances of same component
-* list rendering
-* keyed identity
+* Composition
+* Multiple instances
+* List with keys
 
 ---
 
-# **Examples**
+# Testing
 
-### Minimal button
+Snapshot testing:
 
 ```kotlin
-fun HelloButton(tree: ComponentTreeManager): DOMNode =
-    renderComponent(tree) {
-        Button(
-            text = "Click Me!",
-            onClick = { println("clicked!") },
-            style = StyleSet(left=2, top=1, right=12, bottom=2)
-        )
-    }
+@Test
+fun testLayout() {
+    val renderer = StringSnapshotRenderer(40,10)
+    val tree = ComponentTreeManager()
+
+    tree.beginFrame()
+    val root = App(tree, 40, 10)
+    tree.endFrame()
+
+    renderer.clear()
+    renderDomTree(renderer, root)
+    renderer.flush()
+
+    val snap = renderer.snapshot()
+    assertTrue(snap.contains("Count"))
+}
 ```
 
 ---
 
-### Mouse Move Event
+# Extending the Framework
 
-```kotlin
-fun MouseTracker(tree: ComponentTreeManager): DOMNode =
-    renderComponent(tree) {
-        val (pos, setPos) = useState { "0,0" }
+You can add:
 
-        DOMNode(
-            tag = "tracker",
-            text = "Mouse: $pos",
-            onMouseMove = { e ->
-                val x = e.x ?: 0
-                val y = e.y ?: 0
-                setPos("$x,$y")
-            },
-            style = StyleSet(left=1, top=1, right=40, bottom=2)
-        )
-    }
-```
-
----
-
-# **Testing**
-
-The single-file library includes Kotlin `kotlin.test` unit tests that verify:
-
-* state persistence across frames
-* identity preservation in lists
-* independent instances at same call site
-
-You can add snapshot or renderer tests using a mock renderer.
-
----
-
-# **Extending the Framework**
-
-Possible additions:
-
-* ANSI-based renderer (bold, underline, colors, cursor control)
-* Back-buffer renderer (double-buffered VT UI)
 * Focus manager (tab cycling, default focus, focus rings)
 * Border renderer (`borderSet`, line-set graphics)
 * Stylesheet cascade for entire DOM recursion
 * Memoized components (skip rendering when values equal)
 * Derived layout helpers (center, grid, flex-like helpers)
 
+
+The core is intentionally minimal.
+
 ---
-
-# **End**
-
-This documentation covers the entire framework, its architecture, usage, and design intent.
-
-If you want a **full ANSI renderer implementation**, **string snapshot renderer**, or **focus manager**, I can generate those next.

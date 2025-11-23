@@ -1,5 +1,7 @@
 package org.github.alfu32.ktx
 
+import java.io.InputStream
+
 //@file:Suppress("UNCHECKED_CAST")
 
 /* =====================================================================
@@ -173,6 +175,367 @@ interface CanvasRenderer {
     // Event API
     fun pollEvent(): UIEvent?
     fun tryPollEvent(): UIEvent?
+
+    /* ============================================================
+   Lifecycle / Terminal Control
+   ============================================================ */
+    fun enableMouseTracking()
+    fun disableMouseTracking()
+
+    fun hideCursor()
+    fun showCursor()
+    fun resetAttributes()
+
+    fun isRunning(): Boolean
+    fun requestExit()
+    fun shutdown()
+}
+
+/* =====================================================================
+   Minimal no-op renderer to make the main loop runnable without a real VT backend.
+   ===================================================================== */
+
+class NoopRenderer(
+    private val cols: Int = 120,
+    private val rows: Int = 40
+) : CanvasRenderer {
+    override fun clear() {}
+    override fun setColor(r: Int, g: Int, b: Int) {}
+    override fun setBackgroundColor(r: Int, g: Int, b: Int) {}
+    override fun bold(enabled: Boolean) {}
+    override fun italic(enabled: Boolean) {}
+    override fun underline(enabled: Boolean) {}
+    override fun blink(enabled: Boolean) {}
+    override fun drawRect(x: Int, y: Int, width: Int, height: Int) {}
+    override fun drawText(x: Int, y: Int, text: String) {}
+    override fun setCursorPosition(x: Int, y: Int) {}
+    override fun flush() {}
+    override fun pollEvent(): UIEvent? = null
+    override fun tryPollEvent(): UIEvent? = null
+
+
+    /* ============================================================
+   Lifecycle / Terminal Control (no-op)
+   ============================================================ */
+
+    override fun enableMouseTracking() {}
+    override fun disableMouseTracking() {}
+    override fun hideCursor() {}
+    override fun showCursor() {}
+    override fun resetAttributes() {}
+    @Volatile
+    private var running = true
+
+    override fun isRunning(): Boolean = running
+    override fun requestExit() { running = false }
+
+    override fun shutdown() {}
+
+    fun cols() = cols
+    fun rows() = rows
+}
+
+/* =====================================================================
+   ANSI Terminal Renderer
+
+This renderer:
+
+ - Uses ANSI escape sequences
+ - Assumes raw mode is enabled (you’ll handle this outside—Termux/Linux)
+ - Reads stdin for key and mouse events
+ - Supports SGR text formatting
+ - Supports RGB foreground/background
+ - Draws rectangles and text
+ - Maintains no back buffer (your framework controls redraw)
+
+Note: Terminal mouse reporting requires enabling Mouse Tracking Mode.
+You’ll need to enable it once, outside this class:
+
+```
+    print("\u001b[?1000h") // Mouse tracking on (press/release)
+    print("\u001b[?1003h") // Mouse motion tracking
+```
+
+    And raw mode for stdin.
+   ===================================================================== */
+
+class AnsiCanvasRenderer(
+    private val input: InputStream = System.`in`,
+    private val output: Appendable = System.out,
+    private val cols: Int = 200,
+    private val rows: Int = 80
+) : CanvasRenderer {
+
+    private fun esc(code: String) {
+        output.append("\u001b[$code")
+    }
+
+    /* ============================================================
+       Drawing API
+       ============================================================ */
+
+    override fun clear() {
+        esc("2J")      // clear
+        esc("H")       // cursor home
+    }
+
+    override fun setColor(r: Int, g: Int, b: Int) {
+        esc("38;2;$r;$g;${b}m")
+    }
+
+    override fun setBackgroundColor(r: Int, g: Int, b: Int) {
+        esc("48;2;$r;$g;${b}m")
+    }
+
+    override fun bold(enabled: Boolean) {
+        esc(if (enabled) "1m" else "22m")
+    }
+
+    override fun italic(enabled: Boolean) {
+        esc(if (enabled) "3m" else "23m")
+    }
+
+    override fun underline(enabled: Boolean) {
+        esc(if (enabled) "4m" else "24m")
+    }
+
+    override fun blink(enabled: Boolean) {
+        esc(if (enabled) "5m" else "25m")
+    }
+
+    override fun drawRect(x: Int, y: Int, width: Int, height: Int) {
+        if (width <= 0 || height <= 0) return
+        for (row in 0 until height) {
+            esc("${y + row + 1};${x + 1}H")
+            repeat(width) { output.append(" ") }
+        }
+    }
+
+    override fun drawText(x: Int, y: Int, text: String) {
+        esc("${y + 1};${x + 1}H")
+        output.append(text)
+    }
+
+    override fun setCursorPosition(x: Int, y: Int) {
+        esc("${y + 1};${x + 1}H")
+    }
+
+    override fun flush() {
+        // stdout usually auto-flushes, nothing required
+    }
+
+    /* ============================================================
+       Event Parsing
+       ============================================================ */
+
+    override fun pollEvent(): UIEvent? {
+        while (true) {
+            val e = tryPollEvent()
+            if (e != null) return e
+            Thread.sleep(5)
+        }
+    }
+
+    override fun tryPollEvent(): UIEvent? {
+        if (input.available() <= 0) return null
+
+        val b = input.read()
+        if (b < 0) return null
+
+        return parseAnsiInput(b)
+    }
+
+    private fun parseAnsiInput(firstByte: Int): UIEvent? {
+        // Handle ESC sequences
+        if (firstByte == 0x1b) {
+            val next = input.read()
+            if (next == '['.code) {
+                return parseCsi()
+            }
+            return UIEvent(kind="key_down", key="Esc")
+        }
+
+        // Simple printable chars
+        val ch = firstByte.toChar()
+        return UIEvent(kind="key_down", key="$ch")
+    }
+
+    private fun parseCsi(): UIEvent? {
+        val seq = StringBuilder()
+        while (input.available() > 0) {
+            val c = input.read().toChar()
+            seq.append(c)
+            if ((c in 'A'..'Z') || (c in 'a'..'z')) break
+        }
+        val s = seq.toString()
+
+        // Mouse Click: <btn;x;yM or <btn;x;ym
+        if (s.endsWith("M") || s.endsWith("m")) {
+            val body = s.dropLast(1).split(';')
+            if (body.size >= 3 && body[0].startsWith("<")) {
+                val btn = body[0].drop(1).toIntOrNull() ?: 0
+                val x = body[1].toIntOrNull()?.minus(1) ?: 0
+                val y = body[2].toIntOrNull()?.minus(1) ?: 0
+                val down = s.endsWith("M")
+                return if (down)
+                    UIEvent("mouse_down", x=x, y=y, button=btn)
+                else
+                    UIEvent("mouse_up", x=x, y=y, button=btn)
+            }
+        }
+
+        // Arrow keys
+        return when (s) {
+            "A" -> UIEvent("key_down", key="Up")
+            "B" -> UIEvent("key_down", key="Down")
+            "C" -> UIEvent("key_down", key="Right")
+            "D" -> UIEvent("key_down", key="Left")
+            else -> null
+        }
+    }
+
+    /* ============================================================
+   Lifecycle / Terminal Control
+   ============================================================ */
+
+    // Enable terminal mouse tracking modes
+    override fun enableMouseTracking() {
+        // Basic click, drag & motion, SGR (extended coords)
+        output.append("\u001b[?1000h") // mouse click
+        output.append("\u001b[?1002h") // mouse drag
+        output.append("\u001b[?1003h") // mouse motion
+        output.append("\u001b[?1006h") // SGR extended
+    }
+
+    // Disable all mouse modes
+    override fun disableMouseTracking() {
+        output.append("\u001b[?1000l")
+        output.append("\u001b[?1002l")
+        output.append("\u001b[?1003l")
+        output.append("\u001b[?1006l")
+    }
+
+    // Cursor visibility: hide/show
+    override fun hideCursor() {
+        output.append("\u001b[?25l")
+    }
+
+    override fun showCursor() {
+        output.append("\u001b[?25h")
+    }
+
+    // Reset SGR attributes
+    override fun resetAttributes() {
+        output.append("\u001b[0m")
+    }
+
+
+    @Volatile
+    private var running = true
+
+    override fun isRunning(): Boolean = running
+
+    override fun requestExit() {
+        running = false
+    }
+    // Shutdown the renderer and cleanup terminal state
+    override fun shutdown() {
+        disableMouseTracking()
+        resetAttributes()
+        showCursor()
+        // optional: clear terminal on exit
+        // output.append("\u001b[2J\u001b[H")
+    }
+
+    fun cols() = cols
+    fun rows() = rows
+}
+
+/* =====================================================================
+   StringSnapshotRenderer (for testing)
+
+This renderer:
+
+ - Performs no ANSI output
+ - Maintains an internal 2D character buffer (grid)
+ - Records all drawRect/drawText operations
+ - Ignores colors/bold/italic/etc.
+ - Does not generate events
+ - Provides .snapshot() to retrieve textual output
+
+Made for clean, deterministic tests.
+   ===================================================================== */
+
+class StringSnapshotRenderer(
+    private val cols: Int = 120,
+    private val rows: Int = 40
+) : CanvasRenderer {
+
+    private val buffer = Array(rows) { CharArray(cols) { ' ' } }
+
+    override fun clear() {
+        for (y in 0 until rows)
+            for (x in 0 until cols)
+                buffer[y][x] = ' '
+    }
+
+    override fun setColor(r: Int, g: Int, b: Int) {}
+    override fun setBackgroundColor(r: Int, g: Int, b: Int) {}
+    override fun bold(enabled: Boolean) {}
+    override fun italic(enabled: Boolean) {}
+    override fun underline(enabled: Boolean) {}
+    override fun blink(enabled: Boolean) {}
+
+    override fun drawRect(x: Int, y: Int, width: Int, height: Int) {
+        for (yy in y until (y + height)) {
+            if (yy !in 0 until this@StringSnapshotRenderer.rows) continue
+            for (xx in x until (x + width)) {
+                if (xx !in 0 until this@StringSnapshotRenderer.cols) continue
+                buffer[yy][xx] = '#'
+            }
+        }
+    }
+
+    override fun drawText(x: Int, y: Int, text: String) {
+        if (y !in 0 until rows) return
+        var px = x
+        for (c in text) {
+            if (px in 0 until cols)
+                buffer[y][px] = c
+            px++
+        }
+    }
+
+    override fun setCursorPosition(x: Int, y: Int) {}
+    override fun flush() {}
+
+    override fun pollEvent(): UIEvent? = null
+    override fun tryPollEvent(): UIEvent? = null
+
+    /* ============================================================
+   Lifecycle / Terminal Control (no-op)
+   ============================================================ */
+
+    override fun enableMouseTracking() {}
+    override fun disableMouseTracking() {}
+    override fun hideCursor() {}
+    override fun showCursor() {}
+    override fun resetAttributes() {}
+    @Volatile
+    private var running = true
+
+    override fun isRunning(): Boolean = running
+
+    override fun requestExit() {
+        running = false
+    }
+    override fun shutdown() {}
+
+    fun cols() = cols
+    fun rows() = rows
+
+    fun snapshot(): String =
+        buffer.joinToString("\n") { String(it) }
 }
 
 /* =====================================================================
@@ -280,6 +643,7 @@ class HookContext(private val instance: ComponentInstance) {
     }
 }
 
+@Suppress("UNCHECKED_CAST")
 inline fun <T> renderComponent(
     tree: ComponentTreeManager,
     key: String? = null,
@@ -333,6 +697,10 @@ private fun dispatchEventToDom(node: DOMNode, event: UIEvent, parentX: Int, pare
         "focus_lost"   -> node.onFocusLost?.invoke(event)
         "resize"       -> node.onResize?.invoke(event)
     }
+}
+
+fun dispatchEvent(root: DOMNode, event: UIEvent) {
+    dispatchEventToDom(root, event, 0, 0)
 }
 
 /* =====================================================================
@@ -495,6 +863,128 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             children = listOf(header, mainArea, statusBar)
         )
     }
+
+/* =====================================================================
+   WIRED APPLICATION RUNNER
+   ===================================================================== */
+data class AppContext(
+    var onFrame: (number: ULong) -> Unit = {},
+    var onError: (x:Throwable) -> Unit = {},
+    var onExit: () -> Unit = {},
+)
+
+fun runApp(renderer: CanvasRenderer, rootFn: (ComponentTreeManager) -> DOMNode) : AppContext{
+    val appContext = AppContext()
+    val tree = ComponentTreeManager()
+    var lastDom: DOMNode = DOMNode("empty")
+
+    renderer.enableMouseTracking()
+    renderer.hideCursor()
+
+    val startTime = System.currentTimeMillis()
+    var deadCycles = 0
+    var frame: ULong = 0.toULong()
+
+    try {
+        while (true) {
+            frame+=1.toULong()
+            /* ============================================================
+               ABSOLUTE FAILSAFE #1 — renderer exit flag
+               ============================================================ */
+            if (!renderer.isRunning()) {
+                break
+            }
+
+            /* ============================================================
+               POLL EVENT (non-blocking first)
+               ============================================================ */
+            val event = renderer.tryPollEvent() ?: renderer.pollEvent()
+
+            if (event != null) {
+
+                /* ============================================================
+                   APPLICATION EXIT TRIGGERS
+                   ============================================================ */
+                if (event.kind == "key_down") {
+                    when (event.key) {
+                        "q", "Q", "Esc", "\u0003" /* Ctrl+C */ -> {
+                            renderer.requestExit()
+                            continue
+                        }
+                    }
+                }
+
+                dispatchEventToDom(lastDom, event, 0, 0)
+            }
+
+            /* ============================================================
+               RENDER FRAME
+               ============================================================ */
+            tree.beginFrame()
+            val root = rootFn(tree)
+            tree.endFrame()
+            lastDom = root
+
+            renderer.clear()
+            renderDomTree(renderer, root)
+            renderer.flush()
+
+            /* ============================================================
+               ABSOLUTE FAILSAFE #2 — infinite-loop protection
+               ============================================================ */
+            if (event == null) deadCycles++ else deadCycles = 0
+            if (deadCycles > 5000) {        // configurable
+                renderer.requestExit()
+            }
+
+            /* ============================================================
+               ABSOLUTE FAILSAFE #3 — time-based emergency exit
+               ============================================================ */
+            if (System.currentTimeMillis() - startTime > 48 * 60 * 60 * 1000L) {
+                // safety: 48 hours uptime max
+                renderer.requestExit()
+            }
+
+            /* ============================================================
+               BREAK ON EXIT REQUEST
+               ============================================================ */
+            if (!renderer.isRunning()) break
+            appContext.onFrame(frame)
+        }
+        appContext.onExit()
+    }catch (x: Throwable){
+        println(x)
+        appContext.onError(x)
+    }
+    finally {
+        // CLEANUP GUARANTEED
+        renderer.disableMouseTracking()
+        renderer.showCursor()
+        renderer.resetAttributes()
+        renderer.shutdown()
+        appContext.onExit()
+    }
+    return appContext
+}
+/* =====================================================================
+   APPLICATION ENTRY POINT
+   ===================================================================== */
+
+fun main() {
+    val renderer = StringSnapshotRenderer(cols = 120, rows = 40).apply {
+        isRunning()
+    }
+    runApp(renderer){ tree : ComponentTreeManager ->
+        App(tree, renderer.cols(), renderer.rows())
+    }.apply {
+        onExit={
+            println("DONE")
+            println(renderer.snapshot())
+        }
+        onError={ println(it)}
+        onFrame={ println("FRAME: $it")}
+    }
+}
 
 
 /* =====================================================================
