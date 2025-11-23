@@ -28,6 +28,9 @@ interface IFileTree {
     fun refreshOpenNodes()
 }
 
+fun createFileTree(root: String): IFileTree =
+    FileTree.newFileTree(root)
+
 // Implementation hidden behind the interface
 private class FileTree private constructor(
     override val root: String,

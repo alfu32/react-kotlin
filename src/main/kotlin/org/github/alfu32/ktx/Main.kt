@@ -788,6 +788,69 @@ fun VerticalTabsHost(
     )
 }
 
+fun FileTreeComponent(
+    tree: ComponentTreeManager,
+    rootDir: String,
+    width: Int,
+    height: Int,
+    onFileSelected: (FileTreeEntry) -> Unit = {},
+    onFolderSelected: (FileTreeEntry) -> Unit = {}
+): DOMNode = renderComponent(tree) {
+    val safeWidth = width.coerceAtLeast(1)
+    val safeHeight = height.coerceAtLeast(1)
+    val (fileTree, _) = useState { createFileTree(rootDir) }
+    val (version, setVersion) = useState { 0 } // version to trigger re-render
+
+    val entries = fileTree.flattened()
+    val lines = entries.take(safeHeight).mapIndexed { idx, entry ->
+        val indent = "  ".repeat(entry.padding)
+        val prefix = when (entry.typ) {
+            "folder" -> if (entry.isOpen) "[-] " else "[+] "
+            else -> "    "
+        }
+        val label = (indent + prefix + entry.name).take(safeWidth)
+        val text = label.padEnd(safeWidth, ' ')
+        val bg = if (entry.typ == "folder") Color(76, 84, 143) else Color(60, 70, 120)
+
+        DOMNode(
+            tag = "file-entry",
+            id = entry.fullPath,
+            text = text,
+            style = StyleSet(
+                left = 0,
+                top = idx,
+                right = safeWidth - 1,
+                bottom = idx,
+                fg = Color(224, 224, 230),
+                bg = bg
+            ),
+            onMouseDown = {
+                if (entry.typ == "folder") {
+                    fileTree.toggle(entry.fullPath)
+                    fileTree.refreshOpenNodes()
+                    setVersion(version + 1)
+                    onFolderSelected(entry)
+                } else {
+                    onFileSelected(entry)
+                }
+            }
+        )
+    }
+
+    DOMNode(
+        tag = "file-tree",
+        style = StyleSet(
+            left = 0,
+            top = 0,
+            right = safeWidth - 1,
+            bottom = safeHeight - 1,
+            bg = Color(70, 80, 130),
+            fg = Color(220, 220, 230)
+        ),
+        children = lines
+    )
+}
+
 /* =====================================================================
    COMPONENT SYSTEM (hooks, instances)
    ===================================================================== */
@@ -1008,6 +1071,7 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
         val clampedSplit = splitterPos.coerceIn(minPanelWidth, maxPanelWidth)
         val mainHeight = rows - 2
         val tabContentWidth = (clampedSplit - 5).coerceAtLeast(1)
+        val workspaceRoot = System.getProperty("user.dir") ?: "."
 
         // --- Components
         val header = DOMNode(
@@ -1032,8 +1096,21 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
                         "Files" to { _ ->
                             DOMNode(
                                 tag = "files-tab",
-                                text = "File tree\n[placeholder]",
-                                style = StyleSet.parse("left:0; top:0; right:${tabContentWidth - 1}; bottom:${mainHeight - 1}; fg:#e0e0e0; bg:#6f78b8")
+                                style = StyleSet.parse("left:0; top:0; right:${tabContentWidth - 1}; bottom:${mainHeight - 1}"),
+                                children = listOf(
+                                    FileTreeComponent(
+                                        tree = tree,
+                                        rootDir = workspaceRoot,
+                                        width = tabContentWidth,
+                                        height = mainHeight,
+                                        onFileSelected = { entry ->
+                                            setStatus("File Selected ${entry.fullPath}")
+                                        },
+                                        onFolderSelected = { entry ->
+                                            setStatus("Folder Selected ${entry.fullPath}")
+                                        }
+                                    )
+                                )
                             )
                         },
                         "Notes" to { _ ->
