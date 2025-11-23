@@ -757,6 +757,7 @@ class ComponentTreeManager {
     )
 }
 
+@Suppress("UNCHECKED_CAST")
 class HookContext(private val instance: ComponentInstance) {
     fun <T> useState(initial: () -> T): Pair<T, (T) -> Unit> {
         val i = instance.nextHookIndex++
