@@ -729,8 +729,9 @@ private fun hitTest(x: Int, y: Int, node: DOMNode, parentX: Int, parentY: Int): 
 
     val x1 = parentX + left
     val y1 = parentY + top
-    val x2 = parentX + right
-    val y2 = parentY + bottom
+    // right/bottom are inclusive cell indexes; +1 to make them exclusive in the check
+    val x2 = parentX + right + 1
+    val y2 = parentY + bottom + 1
 
     return x in x1 until x2 && y in y1 until y2
 }
@@ -781,8 +782,8 @@ fun renderDomTree(renderer: CanvasRenderer, dom: DOMNode, parentX: Int = 0, pare
     val x2 = parentX + right
     val y2 = parentY + bottom
 
-    val width  = x2 - x1
-    val height = y2 - y1
+    val width  = (x2 - x1 + 1).coerceAtLeast(1)
+    val height = (y2 - y1 + 1).coerceAtLeast(1)
 
     dom.style.bg?.let { c ->
         renderer.setBackgroundColor(c.r, c.g, c.b)
