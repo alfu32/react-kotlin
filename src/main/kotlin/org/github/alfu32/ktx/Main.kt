@@ -7,6 +7,27 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.lang.ProcessBuilder
 
+/*
+===============================================================
+  TEXT BUFFER INTERFACE
+===============================================================
+  Describes the required API for a generic line-based text buffer
+  abstraction, independent of UI toolkit or rendering layer.
+===============================================================
+*/
+
+/*
+===============================================================
+  DATA TYPES
+===============================================================
+*/
+
+
+/*
+===============================================================
+  TEXT BUFFER IMPLEMENTATION
+===============================================================
+*/
 //@file:Suppress("UNCHECKED_CAST")
 
 /* =====================================================================
