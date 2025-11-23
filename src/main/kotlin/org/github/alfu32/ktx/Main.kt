@@ -1,6 +1,8 @@
 package org.github.alfu32.ktx
 
 import java.io.InputStream
+import java.io.Flushable
+import java.util.IdentityHashMap
 
 //@file:Suppress("UNCHECKED_CAST")
 
@@ -213,7 +215,6 @@ class NoopRenderer(
     override fun pollEvent(): UIEvent? = null
     override fun tryPollEvent(): UIEvent? = null
 
-
     /* ============================================================
    Lifecycle / Terminal Control (no-op)
    ============================================================ */
@@ -321,7 +322,9 @@ class AnsiCanvasRenderer(
     }
 
     override fun flush() {
-        // stdout usually auto-flushes, nothing required
+        if (output is Flushable) {
+            (output as Flushable).flush()
+        }
     }
 
     /* ============================================================
@@ -873,53 +876,25 @@ data class AppContext(
     var onExit: () -> Unit = {},
 )
 
-fun runApp(renderer: CanvasRenderer, rootFn: (ComponentTreeManager) -> DOMNode) : AppContext{
-    val appContext = AppContext()
+fun runApp(
+    renderer: CanvasRenderer,
+    maxFrames: Long? = null,
+    appContext: AppContext = AppContext(),
+    rootFn: (ComponentTreeManager) -> DOMNode
+) : AppContext {
     val tree = ComponentTreeManager()
     var lastDom: DOMNode = DOMNode("empty")
 
     renderer.enableMouseTracking()
     renderer.hideCursor()
 
-    val startTime = System.currentTimeMillis()
-    var deadCycles = 0
-    var frame: ULong = 0.toULong()
+    var frame: Long = 0
 
     try {
-        while (true) {
-            frame+=1.toULong()
-            /* ============================================================
-               ABSOLUTE FAILSAFE #1 — renderer exit flag
-               ============================================================ */
-            if (!renderer.isRunning()) {
-                break
-            }
+        while (renderer.isRunning()) {
+            frame += 1
 
-            /* ============================================================
-               POLL EVENT (non-blocking first)
-               ============================================================ */
-            val event = renderer.tryPollEvent() ?: renderer.pollEvent()
-
-            if (event != null) {
-
-                /* ============================================================
-                   APPLICATION EXIT TRIGGERS
-                   ============================================================ */
-                if (event.kind == "key_down") {
-                    when (event.key) {
-                        "q", "Q", "Esc", "\u0003" /* Ctrl+C */ -> {
-                            renderer.requestExit()
-                            continue
-                        }
-                    }
-                }
-
-                dispatchEventToDom(lastDom, event, 0, 0)
-            }
-
-            /* ============================================================
-               RENDER FRAME
-               ============================================================ */
+            // Render frame
             tree.beginFrame()
             val root = rootFn(tree)
             tree.endFrame()
@@ -929,34 +904,32 @@ fun runApp(renderer: CanvasRenderer, rootFn: (ComponentTreeManager) -> DOMNode) 
             renderDomTree(renderer, root)
             renderer.flush()
 
-            /* ============================================================
-               ABSOLUTE FAILSAFE #2 — infinite-loop protection
-               ============================================================ */
-            if (event == null) deadCycles++ else deadCycles = 0
-            if (deadCycles > 5000) {        // configurable
-                renderer.requestExit()
+            // Poll a single event (non-blocking) after rendering
+            val event = renderer.tryPollEvent()
+            if (event != null) {
+                if (event.kind == "key_down" &&
+                    (event.key == "q" || event.key == "Q" || event.key == "Esc" || event.key == "\u0003")) {
+                    renderer.requestExit()
+                } else {
+                    dispatchEventToDom(lastDom, event, 0, 0)
+                }
+            } else {
+                // avoid busy loop when renderer provides no events
+                Thread.sleep(10)
             }
 
-            /* ============================================================
-               ABSOLUTE FAILSAFE #3 — time-based emergency exit
-               ============================================================ */
-            if (System.currentTimeMillis() - startTime > 48 * 60 * 60 * 1000L) {
-                // safety: 48 hours uptime max
+            appContext.onFrame(frame.toULong())
+
+            // Optional frame cap
+            if (maxFrames != null && frame >= maxFrames) {
                 renderer.requestExit()
             }
-
-            /* ============================================================
-               BREAK ON EXIT REQUEST
-               ============================================================ */
-            if (!renderer.isRunning()) break
-            appContext.onFrame(frame)
         }
         appContext.onExit()
-    }catch (x: Throwable){
+    } catch (x: Throwable) {
         println(x)
         appContext.onError(x)
-    }
-    finally {
+    } finally {
         // CLEANUP GUARANTEED
         renderer.disableMouseTracking()
         renderer.showCursor()
@@ -971,18 +944,35 @@ fun runApp(renderer: CanvasRenderer, rootFn: (ComponentTreeManager) -> DOMNode) 
    ===================================================================== */
 
 fun main() {
-    val renderer = StringSnapshotRenderer(cols = 120, rows = 40).apply {
-        isRunning()
+    // Swap renderer implementation here:
+    //  - StringSnapshotRenderer: single-frame render, prints buffer, exits
+    //  - NoopRenderer: single-frame render, no output
+    //  - AnsiCanvasRenderer: interactive loop (ensure your terminal is in raw mode)
+
+    val renderer: CanvasRenderer = AnsiCanvasRenderer(cols = 120, rows = 40)
+    val (cols, rows) = when (renderer) {
+        is StringSnapshotRenderer -> renderer.cols() to renderer.rows()
+        is NoopRenderer -> renderer.cols() to renderer.rows()
+        is AnsiCanvasRenderer -> renderer.cols() to renderer.rows()
+        else -> 120 to 40
     }
-    runApp(renderer){ tree : ComponentTreeManager ->
-        App(tree, renderer.cols(), renderer.rows())
-    }.apply {
-        onExit={
-            println("DONE")
-            println(renderer.snapshot())
-        }
-        onError={ println(it)}
-        onFrame={ println("FRAME: $it")}
+
+    val ctx = AppContext(
+        onExit = {
+            when (renderer) {
+                is StringSnapshotRenderer -> println(renderer.snapshot())
+                else -> println("DONE")
+            }
+        },
+        onError = { println(it) }
+    )
+
+    runApp(
+        renderer = renderer,
+        maxFrames = 1,
+        appContext = ctx
+    ) { tree: ComponentTreeManager ->
+        App(tree, cols, rows)
     }
 }
 
