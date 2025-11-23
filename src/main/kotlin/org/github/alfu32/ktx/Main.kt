@@ -1039,8 +1039,13 @@ private fun enterRawMode(): String? {
 }
 
 private fun restoreStty(state: String?) {
-    if (state == null) return
-    runCommand("sh", "-c", "stty $state < /dev/tty")
+    val cmd = if (state != null) {
+        "stty $state < /dev/tty"
+    } else {
+        // If we failed to capture the previous state, at least return to a sane, echoed mode.
+        "stty sane -echo echo icanon isig < /dev/tty"
+    }
+    runCommand("sh", "-c", cmd)
 }
 
 fun runApp(
@@ -1103,12 +1108,14 @@ fun runApp(
         appContext.onError(x)
     } finally {
         // CLEANUP GUARANTEED
+        renderer.resetAttributes()
         renderer.disableMouseTracking()
         renderer.showCursor()
-        renderer.resetAttributes()
         renderer.shutdown()
         if (renderer is AnsiCanvasRenderer) {
             restoreStty(savedStty)
+            // Safety: ensure terminal is restored even if stty state was missing or broken.
+            runCommand("sh", "-c", "stty sane echo icanon isig < /dev/tty")
             renderer.leaveAlternateScreen()
         }
         appContext.onExit()
