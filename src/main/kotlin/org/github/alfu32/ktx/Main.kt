@@ -700,6 +700,94 @@ fun VerticalSplitter(
     )
 }
 
+fun VerticalTabsHost(
+    tree: ComponentTreeManager,
+    style: StyleSet,
+    tabs: LinkedHashMap<String, (ComponentTreeManager) -> DOMNode>,
+    onTabChanged: (String) -> Unit,
+    key: String? = null
+): DOMNode = renderComponent(tree, key) {
+    val hostWidth = (style.right ?: 0) - (style.left ?: 0) + 1
+    val hostHeight = (style.bottom ?: 0) - (style.top ?: 0) + 1
+    val stripeWidth = 5
+    val buttonHeight = 3
+    val initialTab = tabs.keys.firstOrNull()
+    val (activeTab, setActiveTab) = useState { initialTab ?: "" }
+
+    fun makeLabel(name: String): String {
+        val short = name.take(stripeWidth).padEnd(stripeWidth, ' ')
+        return buildString {
+            append(" ".repeat(stripeWidth)).append('\n')
+            append(short).append('\n')
+            append(" ".repeat(stripeWidth))
+        }
+    }
+
+    val buttons = tabs.entries.mapIndexed { idx, entry ->
+        val top = idx * buttonHeight
+        val bottom = top + buttonHeight - 1
+        val selected = entry.key == activeTab
+        val bg = if (selected) Color(120, 130, 200) else Color(70, 80, 130)
+        val fg = Color(220, 220, 230)
+
+        DOMNode(
+            tag = "tab-button",
+            id = "tab-${entry.key}",
+            text = makeLabel(entry.key),
+            style = StyleSet(
+                left = 0,
+                top = top,
+                right = stripeWidth - 1,
+                bottom = bottom,
+                fg = fg,
+                bg = bg
+            ),
+            onMouseDown = {
+                if (activeTab != entry.key) {
+                    setActiveTab(entry.key)
+                    onTabChanged(entry.key)
+                }
+            }
+        )
+    }
+
+    val contentWidth = (hostWidth - stripeWidth).coerceAtLeast(1)
+    val content = tabs[activeTab]?.invoke(tree)
+
+    DOMNode(
+        tag = "vertical-tabs-host",
+        style = style,
+        children = listOfNotNull(
+            DOMNode(
+                tag = "tab-strip",
+                style = StyleSet(
+                    left = 0,
+                    top = 0,
+                    right = stripeWidth - 1,
+                    bottom = (hostHeight - 1).coerceAtLeast(0),
+                    bg = Color(50, 60, 110),
+                    fg = Color(200, 200, 210)
+                ),
+                children = buttons
+            ),
+            content?.let {
+                DOMNode(
+                    tag = "tab-content-area",
+                    style = StyleSet(
+                        left = stripeWidth,
+                        top = 0,
+                        right = stripeWidth + contentWidth - 1,
+                        bottom = (hostHeight - 1).coerceAtLeast(0),
+                        bg = Color(80, 90, 150),
+                        fg = Color(210, 210, 220)
+                    ),
+                    children = listOf(it)
+                )
+            }
+        )
+    )
+}
+
 /* =====================================================================
    COMPONENT SYSTEM (hooks, instances)
    ===================================================================== */
@@ -919,6 +1007,7 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
         val maxPanelWidth = (cols - 4).coerceAtLeast(minPanelWidth)
         val clampedSplit = splitterPos.coerceIn(minPanelWidth, maxPanelWidth)
         val mainHeight = rows - 2
+        val tabContentWidth = (clampedSplit - 5).coerceAtLeast(1)
 
         // --- Components
         val header = DOMNode(
@@ -934,14 +1023,37 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
         val sidebar = DOMNode(
             tag = "div",
             id = "sidebar",
-            text = "File tree\n[placeholder]",
             style = StyleSet.parse("left:0; top:0; right:${clampedSplit - 1}; bottom:${mainHeight - 1}; fg:#bebebb; bg:#636fab"),
-            onMouseDown = { ev ->
-                setStatus("Sidebar click @${ev.x},${ev.y}")
-            },
-            onMouseMove = {ev ->
-                setStatus("$statText,sidebar,hover,x${ev.x},y${ev.y}")
-            }
+            children = listOf(
+                VerticalTabsHost(
+                    tree = tree,
+                    style = StyleSet.parse("left:0; top:0; right:${clampedSplit - 1}; bottom:${mainHeight - 1}"),
+                    tabs = linkedMapOf(
+                        "Files" to { _ ->
+                            DOMNode(
+                                tag = "files-tab",
+                                text = "File tree\n[placeholder]",
+                                style = StyleSet.parse("left:0; top:0; right:${tabContentWidth - 1}; bottom:${mainHeight - 1}; fg:#e0e0e0; bg:#6f78b8")
+                            )
+                        },
+                        "Notes" to { _ ->
+                            DOMNode(
+                                tag = "notes-tab",
+                                text = "Notes\n- TODO\n- Ideas",
+                                style = StyleSet.parse("left:0; top:0; right:${tabContentWidth - 1}; bottom:${mainHeight - 1}; fg:#e0e0e0; bg:#5a669f")
+                            )
+                        },
+                        "Logs" to { _ ->
+                            DOMNode(
+                                tag = "logs-tab",
+                                text = "Logs\n[recent events]",
+                                style = StyleSet.parse("left:0; top:0; right:${tabContentWidth - 1}; bottom:${mainHeight - 1}; fg:#e0e0e0; bg:#4f5c8e")
+                            )
+                        }
+                    ),
+                    onTabChanged = { name -> setStatus("Tab -> $name") }
+                )
+            )
         )
 
         // Splitter with simple drag logic in-place
