@@ -610,6 +610,32 @@ fun Button(
         onMouseDown = onClick
     )
 
+// Simple vertical splitter component: renders a vertical bar filling its styled height.
+fun VerticalSplitter(
+    style: StyleSet,
+    onMouseDown: ((UIEvent) -> Unit)? = null,
+    onMouseMove: ((UIEvent) -> Unit)? = null,
+    onMouseUp: ((UIEvent) -> Unit)? = null
+): DOMNode {
+    val top = style.top ?: 0
+    val bottom = style.bottom ?: top
+    val height = (bottom - top + 1).coerceAtLeast(1)
+    val bar = buildString {
+        repeat(height) { idx ->
+            append('│')
+            if (idx != height - 1) append('\n')
+        }
+    }
+    return DOMNode(
+        tag = "vertical-splitter",
+        text = bar,
+        style = style,
+        onMouseDown = onMouseDown,
+        onMouseMove = onMouseMove,
+        onMouseUp = onMouseUp
+    )
+}
+
 /* =====================================================================
    COMPONENT SYSTEM (hooks, instances)
    ===================================================================== */
@@ -773,7 +799,15 @@ fun renderDomTree(renderer: CanvasRenderer, dom: DOMNode, parentX: Int = 0, pare
     renderer.underline(deco?.contains("underline") == true)
     renderer.blink(deco?.contains("blink") == true)
 
-    dom.text?.let { renderer.drawText(x1, y1, it) }
+    dom.text?.let {
+        // Render multiline text manually (CanvasRenderer has no wrapping)
+        val lines = it.split('\n')
+        var yy = y1
+        for (line in lines) {
+            renderer.drawText(x1, yy, line)
+            yy++
+        }
+    }
 
     for (child in dom.children)
         renderDomTree(renderer, child, x1, y1)
@@ -848,8 +882,8 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
         val splitter = DOMNode(
             tag = "div",
             id = "splitter",
-            text = "│".repeat(mainHeight),
-            style = StyleSet.parse("left:${clampedSplit - 1}; top:0; right:$clampedSplit; bottom:${mainHeight - 1}; fg:#bebebb; bg:#808080"),
+            text = "│\n".repeat(mainHeight-1),
+            style = StyleSet.parse("left:${clampedSplit - 1}; top:0; right:${clampedSplit}; bottom:${mainHeight - 1}; fg:#bebebb; bg:#808080"),
             onMouseDown = { ev ->
                 val mx = ev.x ?: return@DOMNode
                 setDragging(true)
@@ -863,7 +897,7 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             tag = "div",
             id = "content",
             text = "Editor\n[placeholder]",
-            style = StyleSet.parse("left:${clampedSplit + 1}; top:0; right:${cols - 1}; bottom:${mainHeight - 1}; fg:#bebebb; bg:#182460"),
+            style = StyleSet.parse("left:${clampedSplit}; top:0; right:${cols - 1}; bottom:${mainHeight - 1}; fg:#bebebb; bg:#182460"),
             onMouseMove = {ev ->
                 setStatus("$statText,content,hover,x${ev.x},y${ev.y}")
             }
@@ -896,11 +930,13 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
                 }
             },
             onMouseUp = { ev ->
-                val mx = ev.x ?: return@DOMNode
-                val dx = mx - dragStartX
-                setSplitterPos((dragStartSplit + dx).coerceIn(minPanelWidth, maxPanelWidth))
                 setDragging(false)
-                setStatus("Splitter release ${mx},${ev.y}")
+                // if (dragging) {
+                //     val mx = ev.x ?: return@DOMNode
+                //     val dx = mx - dragStartX
+                //     setSplitterPos((dragStartSplit + dx).coerceIn(minPanelWidth, maxPanelWidth))
+                //     setStatus("Splitter release ${mx},${ev.y}")
+                // }
             }
         )
 
