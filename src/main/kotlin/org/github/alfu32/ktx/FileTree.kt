@@ -1,38 +1,9 @@
 package org.github.alfu32.ktx
 import java.io.File
 
-data class FileTreeEntry(
-    val name: String,
-    val typ: String,      // "file" or "folder"
-    val padding: Int,
-    val fullPath: String,
-    val isOpen: Boolean
-)
-
-class FileTreeItem(
-    val name: String,
-    val fullPath: String,
-    val isDir: Boolean,
-    var isOpen: Boolean = false,
-    var children: List<String> = emptyList()
-)
-
-
-
-// Public interface
-interface IFileTree {
-    val root: String
-
-    fun toggle(path: String)
-    fun flattened(): List<FileTreeEntry>
-    fun refreshOpenNodes()
-}
-
-fun createFileTree(root: String): IFileTree =
-    FileTree.newFileTree(root)
 
 // Implementation hidden behind the interface
-private class FileTree private constructor(
+class FileTree private constructor(
     override val root: String,
     val nodes: MutableMap<String, FileTreeItem>
 ) : IFileTree {

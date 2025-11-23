@@ -2,19 +2,106 @@ package org.github.alfu32.ktx
 
 import java.io.InputStream
 import java.io.Flushable
-import java.util.IdentityHashMap
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import java.lang.ProcessBuilder
+
 
 /*
 ===============================================================
-  TEXT BUFFER INTERFACE
+  FILE TREE INTERFACE
 ===============================================================
   Describes the required API for a generic line-based text buffer
   abstraction, independent of UI toolkit or rendering layer.
 ===============================================================
 */
+interface IFileTree {
+    val root: String
+
+    fun toggle(path: String)
+    fun flattened(): List<FileTreeEntry>
+    fun refreshOpenNodes()
+}
+/*
+===============================================================
+  FILE TREE INTERFACE DATA TYPES
+===============================================================
+*/
+data class FileTreeEntry(
+    val name: String,
+    val typ: String,      // "file" or "folder"
+    val padding: Int,
+    val fullPath: String,
+    val isOpen: Boolean
+)
+
+class FileTreeItem(
+    val name: String,
+    val fullPath: String,
+    val isDir: Boolean,
+    var isOpen: Boolean = false,
+    var children: List<String> = emptyList()
+)
+
+/*
+   ===============================================================
+     TEXT BUFFER INTERFACE
+   ===============================================================
+     Describes the required API for a generic line-based text buffer
+     abstraction, independent of UI toolkit or rendering layer.
+   ===============================================================
+   */
+interface ITextBuffer {
+
+    fun text(): String
+    fun clone(): ITextBuffer
+
+    fun loadText(text: String)
+
+    fun moveCursorTo(position: Position, expand: Boolean)
+    fun moveLeft(expand: Boolean = false, word: Boolean = false)
+    fun moveRight(expand: Boolean = false, word: Boolean = false)
+    fun moveUp(expand: Boolean = false)
+    fun moveDown(expand: Boolean = false)
+    fun moveStartOfLine(expand: Boolean = false)
+    fun moveEndOfLine(expand: Boolean = false)
+    fun selectAll()
+
+    fun insertText(text: String)
+    fun insertNewline()
+
+    fun deleteBackspace()
+    fun deleteForward()
+
+    fun copySelection(): Boolean
+    fun cutSelection(): Boolean
+    fun pasteClipboard()
+
+    fun consumeNotifications(): List<Notification>
+
+    fun startSelection(pos: Position)
+    fun selectTo(pos: Position)
+    fun hasSelection(): Boolean
+    fun clearSelection()
+
+    fun viewportSlice(view: EditorViewport, gutterWidth: Int): ViewportSlice
+}
+
+data class Position(var line: Int = 0, var column: Int = 0)
+
+data class SelectionRange(val start: Position, val end: Position)
+
+enum class NotificationKind { COPY, CUT }
+
+data class Notification(val kind: NotificationKind, val text: String)
+
+data class EditorViewport(val x: Int, val y: Int, val width: Int, val height: Int)
+
+data class ViewSegment(val text: String, val selected: Boolean)
+
+data class ViewLine(val lineIndex: Int, val gutter: String, val segments: List<ViewSegment>)
+
+data class CursorView(val line: Int, val column: Int, val char: String)
+
+data class ViewportSlice(val lines: List<ViewLine>, val totalLines: Int, val cursor: CursorView?)
 
 /*
 ===============================================================
@@ -798,7 +885,7 @@ fun FileTreeComponent(
 ): DOMNode = renderComponent(tree) {
     val safeWidth = width.coerceAtLeast(1)
     val safeHeight = height.coerceAtLeast(1)
-    val (fileTree, _) = useState { createFileTree(rootDir) }
+    val (fileTree, _) = useState { FileTree.newFileTree(rootDir) }
     val (version, setVersion) = useState { 0 } // version to trigger re-render
 
     val entries = fileTree.flattened()
