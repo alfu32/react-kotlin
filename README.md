@@ -1,6 +1,9 @@
----
+![img.png](img.png)
+
 
 # Terminal UI Reactive Framework (Kotlin)
+
+
 
 A compact but powerful reactive UI framework for **VT/ANSI terminal applications**.
 Designed with:
@@ -15,7 +18,7 @@ Designed with:
 
 All of this lives in **a single Kotlin file**, with clear block-structured regions.
 
----
+----
 
 # Table of Contents
 

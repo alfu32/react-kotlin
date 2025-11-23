@@ -446,12 +446,20 @@ class AnsiCanvasRenderer(
         disableMouseTracking()
         resetAttributes()
         showCursor()
-        // optional: clear terminal on exit
-        // output.append("\u001b[2J\u001b[H")
+        leaveAlternateScreen()
     }
 
     fun cols() = cols
     fun rows() = rows
+
+    fun enterAlternateScreen() {
+        output.append("\u001b[?1049h")
+        output.append("\u001b[H")
+    }
+
+    fun leaveAlternateScreen() {
+        output.append("\u001b[?1049l")
+    }
 }
 
 /* =====================================================================
@@ -969,7 +977,7 @@ fun main() {
 
     runApp(
         renderer = renderer,
-        maxFrames = 1,
+        maxFrames = if (renderer is StringSnapshotRenderer || renderer is NoopRenderer) 1 else null,
         appContext = ctx
     ) { tree: ComponentTreeManager ->
         App(tree, cols, rows)
