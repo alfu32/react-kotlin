@@ -794,6 +794,7 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
         val (dragStartX, setDragStartX) = useState { 0 }
         val (dragStartSplit, setDragStartSplit) = useState { splitterPos }
         val (status, setStatus) = useState { "Ready" }
+        val statText = "Pos:$splitterPos,drag:$dragging,StartX:$dragStartX,Split:$dragStartSplit"
 
         // --- Layout math
         val minPanelWidth = 20
@@ -806,7 +807,10 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             tag = "header",
             id = "header",
             text = " Kotlin TUI Demo (q=quit) ",
-            style = StyleSet.parse("left:0; top:0; right:${cols - 1}; bottom:0; fg:#bebebb; bg:#223388")
+            style = StyleSet.parse("left:0; top:0; right:${cols - 1}; bottom:0; fg:#bebebb; bg:#223388"),
+            onMouseMove = {ev ->
+                setStatus("$statText,header,hover,x${ev.x},y${ev.y}")
+            }
         )
 
         val sidebar = DOMNode(
@@ -816,6 +820,9 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             style = StyleSet.parse("left:0; top:0; right:${clampedSplit - 1}; bottom:${mainHeight - 1}; fg:#bebebb; bg:#636fab"),
             onMouseDown = { ev ->
                 setStatus("Sidebar click @${ev.x},${ev.y}")
+            },
+            onMouseMove = {ev ->
+                setStatus("$statText,sidebar,hover,x${ev.x},y${ev.y}")
             }
         )
 
@@ -823,8 +830,8 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
         val splitter = DOMNode(
             tag = "div",
             id = "splitter",
-            text = "│",
-            style = StyleSet.parse("left:$clampedSplit; top:0; right:$clampedSplit; bottom:${mainHeight - 1}; fg:#bebebb; bg:#808080"),
+            text = "│".repeat(mainHeight),
+            style = StyleSet.parse("left:${clampedSplit - 1}; top:0; right:$clampedSplit; bottom:${mainHeight - 1}; fg:#bebebb; bg:#808080"),
             onMouseDown = { ev ->
                 val mx = ev.x ?: return@DOMNode
                 setDragging(true)
@@ -838,6 +845,8 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
                     val dx = mx - dragStartX
                     setSplitterPos((dragStartSplit + dx).coerceIn(minPanelWidth, maxPanelWidth))
                     setStatus("Splitter drag ${mx},${ev.y}")
+                } else {
+                    setStatus("$statText,content,splitter,x${ev.x},y${ev.y}")
                 }
             },
             onMouseUp = { ev ->
@@ -854,8 +863,8 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             id = "content",
             text = "Editor\n[placeholder]",
             style = StyleSet.parse("left:${clampedSplit + 1}; top:0; right:${cols - 1}; bottom:${mainHeight - 1}; fg:#bebebb; bg:#182460"),
-            onMouseDown = { ev ->
-                setStatus("Content click @${ev.x},${ev.y}")
+            onMouseMove = {ev ->
+                setStatus("$statText,content,hover,x${ev.x},y${ev.y}")
             }
         )
 
@@ -863,14 +872,20 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             tag = "footer",
             id = "status",
             text = "$status | split=$clampedSplit drag=$dragging",
-            style = StyleSet.parse("left:0; top:${rows - 1}; right:${cols - 1}; bottom:${rows - 1}; fg:#bebebb; bg:#4d4d4d")
+            style = StyleSet.parse("left:0; top:${rows - 1}; right:${cols - 1}; bottom:${rows - 1}; fg:#bebebb; bg:#4d4d4d"),
+            onMouseMove = {ev ->
+                setStatus("$statText,footer,hover,x${ev.x},y${ev.y}")
+            }
         )
 
         val mainArea = DOMNode(
             tag = "div",
             id = "main-area",
             style = StyleSet.parse("left:0; top:1; right:${cols - 1}; bottom:${rows - 2}"),
-            children = listOf(sidebar, splitter, content)
+            children = listOf(sidebar, splitter, content),
+            onMouseMove = {ev ->
+                setStatus("$statText,div,hover,x${ev.x},y${ev.y}")
+            }
         )
 
         // Root composes everything
@@ -913,9 +928,9 @@ private fun restoreStty(state: String?) {
 fun runApp(
     renderer: CanvasRenderer,
     maxFrames: Long? = null,
-    appContext: AppContext = AppContext(),
     rootFn: (ComponentTreeManager) -> DOMNode
 ) : AppContext {
+    val appContext: AppContext = AppContext()
     val tree = ComponentTreeManager()
     var lastDom: DOMNode = DOMNode("empty")
 
@@ -1000,21 +1015,18 @@ fun main() {
         else -> 120 to 40
     }
 
-    val ctx = AppContext(
+    runApp(
+        renderer = renderer,
+        maxFrames = if (renderer is StringSnapshotRenderer || renderer is NoopRenderer) 1 else null,
+    ) { tree: ComponentTreeManager ->
+        App(tree, cols, rows)
+    }.apply {
         onExit = {
             when (renderer) {
                 is StringSnapshotRenderer -> println(renderer.snapshot())
             }
-        },
+        }
         onError = { println(it) }
-    )
-
-    runApp(
-        renderer = renderer,
-        maxFrames = if (renderer is StringSnapshotRenderer || renderer is NoopRenderer) 1 else null,
-        appContext = ctx
-    ) { tree: ComponentTreeManager ->
-        App(tree, cols, rows)
     }
 }
 
