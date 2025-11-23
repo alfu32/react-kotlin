@@ -3,6 +3,9 @@ package org.github.alfu32.ktx
 import java.io.InputStream
 import java.io.Flushable
 import java.util.IdentityHashMap
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.lang.ProcessBuilder
 
 //@file:Suppress("UNCHECKED_CAST")
 
@@ -888,6 +891,25 @@ data class AppContext(
     var onExit: () -> Unit = {},
 )
 
+// ============ Terminal raw mode helpers ============
+private fun runCommand(vararg cmd: String): String? = try {
+    ProcessBuilder(*cmd)
+        .redirectErrorStream(true)
+        .start()
+        .inputStream.bufferedReader().use { it.readText() }
+} catch (_: Exception) { null }
+
+private fun enterRawMode(): String? {
+    val state = runCommand("sh", "-c", "stty -g < /dev/tty")?.trim()
+    runCommand("sh", "-c", "stty raw -echo < /dev/tty")
+    return state
+}
+
+private fun restoreStty(state: String?) {
+    if (state == null) return
+    runCommand("sh", "-c", "stty $state < /dev/tty")
+}
+
 fun runApp(
     renderer: CanvasRenderer,
     maxFrames: Long? = null,
@@ -896,6 +918,9 @@ fun runApp(
 ) : AppContext {
     val tree = ComponentTreeManager()
     var lastDom: DOMNode = DOMNode("empty")
+
+    // Try to enter raw mode for ANSI terminals so key/mouse events work and echo is off.
+    val savedStty = if (renderer is AnsiCanvasRenderer) enterRawMode() else null
 
     // Best-effort terminal prep if supported
     (renderer as? AnsiCanvasRenderer)?.enterAlternateScreen()
@@ -949,6 +974,10 @@ fun runApp(
         renderer.showCursor()
         renderer.resetAttributes()
         renderer.shutdown()
+        if (renderer is AnsiCanvasRenderer) {
+            restoreStty(savedStty)
+            renderer.leaveAlternateScreen()
+        }
         appContext.onExit()
     }
     return appContext
