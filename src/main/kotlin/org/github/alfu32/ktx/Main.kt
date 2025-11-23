@@ -267,8 +267,10 @@ class AnsiCanvasRenderer(
     private val rows: Int = 80
 ) : CanvasRenderer {
 
+    private val frame = StringBuilder()
+
     private fun esc(code: String) {
-        output.append("\u001b[$code")
+        frame.append("\u001b[$code")
     }
 
     /* ============================================================
@@ -308,13 +310,13 @@ class AnsiCanvasRenderer(
         if (width <= 0 || height <= 0) return
         for (row in 0 until height) {
             esc("${y + row + 1};${x + 1}H")
-            repeat(width) { output.append(" ") }
+            repeat(width) { frame.append(" ") }
         }
     }
 
     override fun drawText(x: Int, y: Int, text: String) {
         esc("${y + 1};${x + 1}H")
-        output.append(text)
+        frame.append(text)
     }
 
     override fun setCursorPosition(x: Int, y: Int) {
@@ -322,9 +324,11 @@ class AnsiCanvasRenderer(
     }
 
     override fun flush() {
+        output.append(frame.toString())
         if (output is Flushable) {
             (output as Flushable).flush()
         }
+        frame.setLength(0)
     }
 
     /* ============================================================
@@ -893,6 +897,8 @@ fun runApp(
     val tree = ComponentTreeManager()
     var lastDom: DOMNode = DOMNode("empty")
 
+    // Best-effort terminal prep if supported
+    (renderer as? AnsiCanvasRenderer)?.enterAlternateScreen()
     renderer.enableMouseTracking()
     renderer.hideCursor()
 
@@ -969,7 +975,6 @@ fun main() {
         onExit = {
             when (renderer) {
                 is StringSnapshotRenderer -> println(renderer.snapshot())
-                else -> println("DONE")
             }
         },
         onError = { println(it) }
