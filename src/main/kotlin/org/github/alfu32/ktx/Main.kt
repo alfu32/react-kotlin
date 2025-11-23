@@ -125,13 +125,29 @@ data class UIEvent(
     val kind: String,           // e.g. "mouse_down", "key_down", "resize"
     val x: Int? = null,         // mouse coordinates
     val y: Int? = null,
+    val relX: Int? = null,         // mouse coordinates
+    val relY: Int? = null,
     val button: Int? = null,    // mouse button
     val scrollDelta: Int? = null,
     val key: String? = null,    // keyboard key
     val focusId: String? = null,
     val cols: Int? = null,      // resize cols
     val rows: Int? = null       // resize rows
-)
+){
+    fun alterCopy(conf:UIEvent)= UIEvent(
+            kind= this.kind,
+            x= conf.x ?: this.x,
+            y= conf.y ?: this.y,
+            relX= conf.relX ?: this.relX,
+            relY= conf.relY ?: this.relY,
+            button= conf.button ?: this.button,
+            scrollDelta= conf.scrollDelta ?: this.scrollDelta,
+            key= conf.key ?: this.key,
+            focusId= conf.focusId ?: this.focusId,
+            cols= conf.cols ?: this.cols,
+            rows= conf.rows ?: this.rows,
+        )
+}
 
 /* =====================================================================
    STYLE SYSTEM (as provided by you)
@@ -787,157 +803,6 @@ fun VerticalSplitter(
     )
 }
 
-fun VerticalTabsHost(
-    tree: ComponentTreeManager,
-    style: StyleSet,
-    tabs: LinkedHashMap<String, (ComponentTreeManager) -> DOMNode>,
-    onTabChanged: (String) -> Unit,
-    key: String? = null
-): DOMNode = renderComponent(tree, key) {
-    val hostWidth = (style.right ?: 0) - (style.left ?: 0) + 1
-    val hostHeight = (style.bottom ?: 0) - (style.top ?: 0) + 1
-    val stripeWidth = 5
-    val buttonHeight = 3
-    val initialTab = tabs.keys.firstOrNull()
-    val (activeTab, setActiveTab) = useState { initialTab ?: "" }
-
-    fun makeLabel(name: String): String {
-        val short = name.take(stripeWidth).padEnd(stripeWidth, ' ')
-        return buildString {
-            append(" ".repeat(stripeWidth)).append('\n')
-            append(short).append('\n')
-            append(" ".repeat(stripeWidth))
-        }
-    }
-
-    val buttons = tabs.entries.mapIndexed { idx, entry ->
-        val top = idx * buttonHeight
-        val bottom = top + buttonHeight - 1
-        val selected = entry.key == activeTab
-        val bg = if (selected) Color(120, 130, 200) else Color(70, 80, 130)
-        val fg = Color(220, 220, 230)
-
-        DOMNode(
-            tag = "tab-button",
-            id = "tab-${entry.key}",
-            text = makeLabel(entry.key),
-            style = StyleSet(
-                left = 0,
-                top = top,
-                right = stripeWidth - 1,
-                bottom = bottom,
-                fg = fg,
-                bg = bg
-            ),
-            onMouseDown = {
-                if (activeTab != entry.key) {
-                    setActiveTab(entry.key)
-                    onTabChanged(entry.key)
-                }
-            }
-        )
-    }
-
-    val contentWidth = (hostWidth - stripeWidth).coerceAtLeast(1)
-    val content = tabs[activeTab]?.invoke(tree)
-
-    DOMNode(
-        tag = "vertical-tabs-host",
-        style = style,
-        children = listOfNotNull(
-            DOMNode(
-                tag = "tab-strip",
-                style = StyleSet(
-                    left = 0,
-                    top = 0,
-                    right = stripeWidth - 1,
-                    bottom = (hostHeight - 1).coerceAtLeast(0),
-                    bg = Color(50, 60, 110),
-                    fg = Color(200, 200, 210)
-                ),
-                children = buttons
-            ),
-            content?.let {
-                DOMNode(
-                    tag = "tab-content-area",
-                    style = StyleSet(
-                        left = stripeWidth,
-                        top = 0,
-                        right = stripeWidth + contentWidth - 1,
-                        bottom = (hostHeight - 1).coerceAtLeast(0),
-                        bg = Color(80, 90, 150),
-                        fg = Color(210, 210, 220)
-                    ),
-                    children = listOf(it)
-                )
-            }
-        )
-    )
-}
-
-fun FileTreeComponent(
-    tree: ComponentTreeManager,
-    rootDir: String,
-    width: Int,
-    height: Int,
-    onFileSelected: (FileTreeEntry) -> Unit = {},
-    onFolderSelected: (FileTreeEntry) -> Unit = {}
-): DOMNode = renderComponent(tree) {
-    val safeWidth = width.coerceAtLeast(1)
-    val safeHeight = height.coerceAtLeast(1)
-    val (fileTree, _) = useState { FileTree.newFileTree(rootDir) }
-    val (version, setVersion) = useState { 0 } // version to trigger re-render
-
-    val entries = fileTree.flattened()
-    val lines = entries.take(safeHeight).mapIndexed { idx, entry ->
-        val indent = "  ".repeat(entry.padding)
-        val prefix = when (entry.typ) {
-            "folder" -> if (entry.isOpen) "[-] " else "[+] "
-            else -> "    "
-        }
-        val label = (indent + prefix + entry.name).take(safeWidth)
-        val text = label.padEnd(safeWidth, ' ')
-        val bg = if (entry.typ == "folder") Color(76, 84, 143) else Color(60, 70, 120)
-
-        DOMNode(
-            tag = "file-entry",
-            id = entry.fullPath,
-            text = text,
-            style = StyleSet(
-                left = 0,
-                top = idx,
-                right = safeWidth - 1,
-                bottom = idx,
-                fg = Color(224, 224, 230),
-                bg = bg
-            ),
-            onMouseDown = {
-                if (entry.typ == "folder") {
-                    fileTree.toggle(entry.fullPath)
-                    fileTree.refreshOpenNodes()
-                    setVersion(version + 1)
-                    onFolderSelected(entry)
-                } else {
-                    onFileSelected(entry)
-                }
-            }
-        )
-    }
-
-    DOMNode(
-        tag = "file-tree",
-        style = StyleSet(
-            left = 0,
-            top = 0,
-            right = safeWidth - 1,
-            bottom = safeHeight - 1,
-            bg = Color(70, 80, 130),
-            fg = Color(220, 220, 230)
-        ),
-        children = lines
-    )
-}
-
 /* =====================================================================
    COMPONENT SYSTEM (hooks, instances)
    ===================================================================== */
@@ -1050,18 +915,18 @@ private fun dispatchEventToDom(node: DOMNode, event: UIEvent, parentX: Int, pare
     val y = event.y
 
     val inside = if (x != null && y != null) hitTest(x, y, node, parentX, parentY) else false
-
+    val localizedEvent = event.alterCopy(UIEvent(kind=event.kind,relX= x?.minus(parentX),relY= y?.minus(parentY)))
     when (event.kind) {
-        "mouse_down"   -> if (inside) node.onMouseDown?.invoke(event)
-        "mouse_up"     -> if (inside) node.onMouseUp?.invoke(event)
+        "mouse_down"   -> if (inside) node.onMouseDown?.invoke(localizedEvent)
+        "mouse_up"     -> if (inside) node.onMouseUp?.invoke(localizedEvent)
         "mouse_move",
-        "mouse_drag"   -> if (inside) node.onMouseMove?.invoke(event)
-        "mouse_scroll" -> if (inside) node.onMouseScroll?.invoke(event)
-        "key_down"     -> node.onKeyDown?.invoke(event)
-        "key_up"       -> node.onKeyUp?.invoke(event)
-        "focus_gained" -> node.onFocusGained?.invoke(event)
-        "focus_lost"   -> node.onFocusLost?.invoke(event)
-        "resize"       -> node.onResize?.invoke(event)
+        "mouse_drag"   -> if (inside) node.onMouseMove?.invoke(localizedEvent)
+        "mouse_scroll" -> if (inside) node.onMouseScroll?.invoke(localizedEvent)
+        "key_down"     -> node.onKeyDown?.invoke(localizedEvent)
+        "key_up"       -> node.onKeyUp?.invoke(localizedEvent)
+        "focus_gained" -> node.onFocusGained?.invoke(localizedEvent)
+        "focus_lost"   -> node.onFocusLost?.invoke(localizedEvent)
+        "resize"       -> node.onResize?.invoke(localizedEvent)
     }
 }
 
@@ -1138,6 +1003,165 @@ fun listOfCounters(tree: ComponentTreeManager, values: List<Int>): DOMNode =
     )
 
 /* =====================================================================
+   APP COMPONENTS
+   ===================================================================== */
+
+
+fun VerticalTabsHost(
+    tree: ComponentTreeManager,
+    style: StyleSet,
+    tabs: LinkedHashMap<String, (ComponentTreeManager) -> DOMNode>,
+    onTabChanged: (String) -> Unit,
+    key: String? = null
+): DOMNode = renderComponent(tree, key) {
+    val hostWidth = (style.right ?: 0) - (style.left ?: 0) + 1
+    val hostHeight = (style.bottom ?: 0) - (style.top ?: 0) + 1
+    val stripeWidth = 5
+    val buttonHeight = 3
+    val initialTab = tabs.keys.firstOrNull()
+    val (activeTab, setActiveTab) = useState { initialTab ?: "" }
+
+    fun makeLabel(name: String): String {
+        val short = name.take(stripeWidth).padEnd(stripeWidth, ' ')
+        return buildString {
+            append(" ".repeat(stripeWidth)).append('\n')
+            append(short).append('\n')
+            append(" ".repeat(stripeWidth))
+        }
+    }
+
+    val buttons = tabs.entries.mapIndexed { idx, entry ->
+        val top = idx * buttonHeight
+        val bottom = top + buttonHeight - 1
+        val selected = entry.key == activeTab
+        val bg = if (selected) Color(120, 130, 200) else Color(70, 80, 130)
+        val fg = Color(220, 220, 230)
+
+        DOMNode(
+            tag = "tab-button",
+            id = "tab-${entry.key}",
+            text = makeLabel(entry.key),
+            style = StyleSet(
+                left = 0,
+                top = top,
+                right = stripeWidth - 1,
+                bottom = bottom,
+                fg = fg,
+                bg = bg
+            ),
+            onMouseDown = {
+                if (activeTab != entry.key) {
+                    setActiveTab(entry.key)
+                    onTabChanged(entry.key)
+                }
+            }
+        )
+    }
+
+    val contentWidth = (hostWidth - stripeWidth).coerceAtLeast(1)
+    val content = tabs[activeTab]?.invoke(tree)
+
+    DOMNode(
+        tag = "vertical-tabs-host",
+        style = style,
+        children = listOfNotNull(
+            DOMNode(
+                tag = "tab-strip",
+                style = StyleSet(
+                    left = 0,
+                    top = 0,
+                    right = stripeWidth - 1,
+                    bottom = (hostHeight - 1).coerceAtLeast(0),
+                    bg = Color(50, 60, 110),
+                    fg = Color(200, 200, 210)
+                ),
+                children = buttons
+            ),
+            content?.let {
+                DOMNode(
+                    tag = "tab-content-area",
+                    style = StyleSet(
+                        left = stripeWidth,
+                        top = 0,
+                        right = stripeWidth + contentWidth - 1,
+                        bottom = (hostHeight - 1).coerceAtLeast(0),
+                        bg = Color(80, 90, 150),
+                        fg = Color(210, 210, 220)
+                    ),
+                    children = listOf(it)
+                )
+            }
+        )
+    )
+}
+
+fun FileTreeComponent(
+    tag:String ="",
+    tree: ComponentTreeManager,
+    rootDir: String,
+    style: StyleSet,
+    key: String? = null,
+    selected: FileTreeEntry?=null,
+    onFileSelected: (FileTreeEntry) -> Unit = {},
+    onFolderSelected: (FileTreeEntry) -> Unit = {}
+): DOMNode =  renderComponent(tree, key)  {
+    val safeWidth = ( (style.right ?: 0) - (style.left ?: 0) + 1 ).coerceAtLeast(20)
+    val safeHeight = ( (style.bottom ?: 0) - (style.top ?: 0) + 1 ).coerceAtLeast(10)
+    val (fileTree, _) = useState { FileTree.newFileTree(rootDir) }
+    val (version, setVersion) = useState { 0 } // version to trigger re-render
+
+    val entries = fileTree.flattened()
+    val lines = entries.take(safeHeight).mapIndexed { idx, entry ->
+        val indent = "  ".repeat(entry.padding)
+        val prefix = when (entry.typ) {
+            "folder" -> if (entry.isOpen) "[-] " else "[+] "
+            else -> "    "
+        }
+        val label = (indent + prefix + entry.name).take(safeWidth)
+        val text = label.padEnd(safeWidth, ' ')
+        val bg = if (entry.typ == "folder") "#4c548f" else "#3c4678"
+        val fg = if (entry.fullPath == selected?.fullPath) "#fded7d" else "#e0e0e6"
+
+        var openerLocation = text.indexOf("[+]")
+        openerLocation = if(openerLocation == -1 ) text.indexOf("[-]") else openerLocation
+        openerLocation+=((style.left ?: 0)+(5))
+
+        DOMNode(
+            tag = "${tag}::entry",
+            id = entry.fullPath,
+            text = text,
+            style = StyleSet.parse("left:0;top:${idx};right:${safeWidth - 1};bottom:${idx};fg:${fg};bg:${bg};"),
+            onMouseDown = { event: UIEvent ->
+                if (entry.typ == "folder") {
+                    // we detect if it clicks inside the [+] [-] toggler button
+                    var openerLocation = text.indexOf("[+]")
+                    openerLocation = if(openerLocation == -1 ) text.indexOf("[-]") else openerLocation
+                    openerLocation+=(style.left ?: 0)
+                    if(((event.relX?:-1) >= openerLocation) && ((event.relX?:-1) <= (openerLocation+3))) {
+                        // click is inside the [+] [-] toggler button
+                        fileTree.toggle(entry.fullPath)
+                        fileTree.refreshOpenNodes()
+                        setVersion(version + 1)
+                    } else if(((event.x?:-1) > (openerLocation+3))) {
+                        // click is outside the [+] [-] toggler button
+                        onFolderSelected(entry)
+                    } else {
+                        /* no-op */
+                    }
+                } else {
+                    onFileSelected(entry)
+                }
+            }
+        )
+    }
+
+    DOMNode(
+        tag = tag,
+        style = StyleSet.parse("left:0;top:0;right:${safeWidth - 1};bottom:${safeHeight - 1};bg:#46DC82;fg:#DCDCE6"),
+        children = lines
+    )
+}
+/* =====================================================================
    APP DEMO (header + sidebar + splitter + content + status)
    Uses HookContext.useState for per-instance state.
    ===================================================================== */
@@ -1150,6 +1174,7 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
         val (dragStartX, setDragStartX) = useState { 0 }
         val (dragStartSplit, setDragStartSplit) = useState { splitterPos }
         val (status, setStatus) = useState { "Ready" }
+        val (selectedFileTreeEntry,setSelectedFileTreeEntry) = useState<FileTreeEntry?> { null }
         val statText = "Pos:$splitterPos,drag:$dragging,StartX:$dragStartX,Split:$dragStartSplit"
 
         // --- Layout math
@@ -1170,7 +1195,7 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
                 setStatus("$statText,header,hover,x${ev.x},y${ev.y}")
             }
         )
-
+        val tt = 55
         val sidebar = DOMNode(
             tag = "div",
             id = "sidebar",
@@ -1179,25 +1204,21 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
                 VerticalTabsHost(
                     tree = tree,
                     style = StyleSet.parse("left:0; top:0; right:${clampedSplit - 1}; bottom:${mainHeight - 1}"),
-                    tabs = linkedMapOf(
-                        "Files" to { _ ->
-                            DOMNode(
+                    tabs = linkedMapOf("Files" to { _ ->
+                            FileTreeComponent(
                                 tag = "files-tab",
+                                tree = tree,
+                                rootDir = workspaceRoot,
+                                selected=selectedFileTreeEntry,
                                 style = StyleSet.parse("left:0; top:0; right:${tabContentWidth - 1}; bottom:${mainHeight - 1}"),
-                                children = listOf(
-                                    FileTreeComponent(
-                                        tree = tree,
-                                        rootDir = workspaceRoot,
-                                        width = tabContentWidth,
-                                        height = mainHeight,
-                                        onFileSelected = { entry ->
-                                            setStatus("File Selected ${entry.fullPath}")
-                                        },
-                                        onFolderSelected = { entry ->
-                                            setStatus("Folder Selected ${entry.fullPath}")
-                                        }
-                                    )
-                                )
+                                onFileSelected = { entry ->
+                                    setStatus("File Selected ${entry.fullPath}")
+                                    setSelectedFileTreeEntry(entry)
+                                },
+                                onFolderSelected = { entry ->
+                                    setStatus("Folder Selected ${entry.fullPath}")
+                                    setSelectedFileTreeEntry(entry)
+                                }
                             )
                         },
                         "Notes" to { _ ->
