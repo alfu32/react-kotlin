@@ -1,4 +1,5 @@
-![img_2.png](img_2.png)
+
+![img_3.png](img_3.png)
 
 # Terminal UI Reactive Framework (Kotlin)
 
@@ -420,3 +421,7 @@ You can add:
 The core is intentionally minimal.
 
 ---
+
+![img.png](img.png)
+![img_1.png](img_1.png)
+![img_2.png](img_2.png)
