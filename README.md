@@ -3,7 +3,7 @@
 
 # Terminal UI Reactive Framework (Kotlin)
 
-
+## The stated goal is to be able to __develop__ `react` applications with `kotlin`(*) programming language and its' std libraary  __employing__ similar if not identical __component definitions__ we do with `react js/ts` that will run on the jvm
 
 A compact but powerful reactive UI framework for **VT/ANSI terminal applications**.
 Designed with:

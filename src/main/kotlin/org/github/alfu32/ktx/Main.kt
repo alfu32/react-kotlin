@@ -186,6 +186,8 @@ class StyleSheet(
    ===================================================================== */
 
 interface CanvasRenderer {
+    fun cols(): Int
+    fun rows(): Int
     fun clear()
     fun setColor(r: Int, g: Int, b: Int)
     fun setBackgroundColor(r: Int, g: Int, b: Int)
@@ -225,6 +227,8 @@ class NoopRenderer(
     private val cols: Int = 120,
     private val rows: Int = 40
 ) : CanvasRenderer {
+    override fun cols(): Int = cols
+    override fun rows(): Int = rows
     override fun clear() {}
     override fun setColor(r: Int, g: Int, b: Int) {}
     override fun setBackgroundColor(r: Int, g: Int, b: Int) {}
@@ -255,9 +259,6 @@ class NoopRenderer(
     override fun requestExit() { running = false }
 
     override fun shutdown() {}
-
-    fun cols() = cols
-    fun rows() = rows
 }
 
 /* =====================================================================
@@ -287,15 +288,33 @@ You’ll need to enable it once, outside this class:
 class AnsiCanvasRenderer(
     private val input: InputStream = System.`in`,
     private val output: Appendable = System.out,
-    private val cols: Int = 200,
-    private val rows: Int = 80
+    private val initialCols: Int = 200,
+    private val initialRows: Int = 80
 ) : CanvasRenderer {
 
+    @Volatile
+    private var currentCols: Int = initialCols
+    @Volatile
+    private var currentRows: Int = initialRows
+    @Volatile
+    private var pendingResize: UIEvent? = null
+    private var lastSizeCheckNanos: Long = 0L
+
     private val frame = StringBuilder()
+
+    init {
+        queryTerminalSize()?.let { (rows, cols) ->
+            currentRows = rows
+            currentCols = cols
+        }
+    }
 
     private fun esc(code: String) {
         frame.append("\u001b[$code")
     }
+
+    override fun cols(): Int = currentCols
+    override fun rows(): Int = currentRows
 
     /* ============================================================
        Drawing API
@@ -359,6 +378,28 @@ class AnsiCanvasRenderer(
        Event Parsing
        ============================================================ */
 
+    private fun queryTerminalSize(): Pair<Int, Int>? {
+        val output = runCommand("sh", "-c", "stty size < /dev/tty")?.trim() ?: return null
+        val parts = output.split(Regex("\\s+"))
+        if (parts.size != 2) return null
+        val rows = parts[0].toIntOrNull() ?: return null
+        val cols = parts[1].toIntOrNull() ?: return null
+        return rows to cols
+    }
+
+    private fun checkForResizeEvent() {
+        val now = System.nanoTime()
+        if (now - lastSizeCheckNanos < 200_000_000L) return // throttle checks (~5/sec)
+        lastSizeCheckNanos = now
+
+        val (rows, cols) = queryTerminalSize() ?: return
+        if (rows != currentRows || cols != currentCols) {
+            currentRows = rows
+            currentCols = cols
+            pendingResize = UIEvent("resize", cols = currentCols, rows = currentRows)
+        }
+    }
+
     override fun pollEvent(): UIEvent? {
         while (true) {
             val e = tryPollEvent()
@@ -368,6 +409,11 @@ class AnsiCanvasRenderer(
     }
 
     override fun tryPollEvent(): UIEvent? {
+        checkForResizeEvent()
+        pendingResize?.let {
+            pendingResize = null
+            return it
+        }
         if (input.available() <= 0) return null
 
         val b = input.read()
@@ -494,9 +540,6 @@ class AnsiCanvasRenderer(
         leaveAlternateScreen()
     }
 
-    fun cols() = cols
-    fun rows() = rows
-
     fun enterAlternateScreen() {
         output.append("\u001b[?1049h")
         output.append("\u001b[H")
@@ -528,6 +571,9 @@ class StringSnapshotRenderer(
 ) : CanvasRenderer {
 
     private val buffer = Array(rows) { CharArray(cols) { ' ' } }
+
+    override fun cols(): Int = cols
+    override fun rows(): Int = rows
 
     override fun clear() {
         for (y in 0 until rows)
@@ -586,9 +632,6 @@ class StringSnapshotRenderer(
         running = false
     }
     override fun shutdown() {}
-
-    fun cols() = cols
-    fun rows() = rows
 
     fun snapshot(): String =
         buffer.joinToString("\n") { String(it) }
@@ -1001,7 +1044,7 @@ private fun restoreStty(state: String?) {
 
 fun runApp(
     renderer: CanvasRenderer,
-    maxFrames: Long? = null,
+    maxFrames: ULong? = null,
     rootFn: (ComponentTreeManager) -> DOMNode
 ) : AppContext {
     val appContext: AppContext = AppContext()
@@ -1049,7 +1092,7 @@ fun runApp(
             appContext.onFrame(frame.toULong())
 
             // Optional frame cap
-            if (maxFrames != null && frame >= maxFrames) {
+            if (maxFrames != null && frame.toULong() >= maxFrames) {
                 renderer.requestExit()
             }
         }
@@ -1081,19 +1124,14 @@ fun main() {
     //  - NoopRenderer: single-frame render, no output
     //  - AnsiCanvasRenderer: interactive loop (ensure your terminal is in raw mode)
 
-    val renderer: CanvasRenderer = AnsiCanvasRenderer(cols = 120, rows = 40)
-    val (cols, rows) = when (renderer) {
-        is StringSnapshotRenderer -> renderer.cols() to renderer.rows()
-        is NoopRenderer -> renderer.cols() to renderer.rows()
-        is AnsiCanvasRenderer -> renderer.cols() to renderer.rows()
-        else -> 120 to 40
-    }
+    val renderer: CanvasRenderer = AnsiCanvasRenderer(initialCols = 120, initialRows = 40)
+    val maxFrames = if (renderer is StringSnapshotRenderer || renderer is NoopRenderer) 1 else null
 
     runApp(
         renderer = renderer,
-        maxFrames = if (renderer is StringSnapshotRenderer || renderer is NoopRenderer) 1 else null,
+        maxFrames = maxFrames?.toULong(),
     ) { tree: ComponentTreeManager ->
-        App(tree, cols, rows)
+        App(tree, renderer.cols(), renderer.rows())
     }.apply {
         onExit = {
             when (renderer) {
