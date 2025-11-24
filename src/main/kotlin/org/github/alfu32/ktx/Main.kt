@@ -859,6 +859,83 @@ fun Textarea(
         onKeyUp = onKeyUp
     )
 
+fun VerticalScrollBar(
+    tree: ComponentTreeManager,
+    style: StyleSet,
+    contentHeight: Int,
+    scrollOffset: Int,
+    onScrollTo: (Int) -> Unit,
+    key: String? = null
+): DOMNode = renderComponent(tree, key) {
+    val vh = ((style.bottom ?: 0) - (style.top ?: 0) + 1).coerceAtLeast(1)
+    val ch = contentHeight.coerceAtLeast(vh)
+    val maxOffset = (ch - vh).coerceAtLeast(0)
+    val clampedOffset = scrollOffset.coerceIn(0, maxOffset)
+
+    val indicatorHeight = ((vh * vh) / ch).coerceAtLeast(1)
+    val trackRoom = (vh - indicatorHeight).coerceAtLeast(0)
+    val indicatorTop = if (maxOffset == 0 || trackRoom == 0) 0 else (clampedOffset * trackRoom) / maxOffset
+
+    val (dragging, setDragging) = useState { false }
+    val (dragStartY, setDragStartY) = useState { 0 }
+    val (dragStartTop, setDragStartTop) = useState { indicatorTop }
+
+    fun toOffset(indicatorPos: Int): Int {
+        val pos = indicatorPos.coerceIn(0, trackRoom)
+        return if (trackRoom == 0 || maxOffset == 0) 0 else (pos * maxOffset) / trackRoom
+    }
+
+    val indicator = DOMNode(
+        tag = "scrollbar-indicator",
+        style = StyleSet(
+            left = 0,
+            top = indicatorTop,
+            right = 0,
+            bottom = indicatorTop + indicatorHeight - 1,
+            bg = Color(230, 200, 80),
+            fg = Color(30, 30, 30)
+        ),
+        onMouseDown = { ev ->
+            val y = ev.relY ?: 0
+            setDragging(true)
+            setDragStartY(y)
+            setDragStartTop(indicatorTop)
+        },
+        onMouseMove = { ev ->
+            if (!dragging) return@DOMNode
+            val y = ev.relY ?: 0
+            val dy = y - dragStartY
+            val newTop = dragStartTop + dy
+            onScrollTo(toOffset(newTop))
+        },
+        onMouseUp = { _ -> setDragging(false) }
+    )
+
+    val track = DOMNode(
+        tag = "scrollbar-track",
+        style = StyleSet(
+            left = 0,
+            top = 0,
+            right = 0,
+            bottom = vh - 1,
+            bg = Color(60, 60, 60),
+            fg = Color(200, 200, 200)
+        ),
+        children = listOf(indicator),
+        onMouseDown = { ev ->
+            val y = ev.relY ?: 0
+            val targetTop = (y - indicatorHeight / 2).coerceIn(0, trackRoom)
+            onScrollTo(toOffset(targetTop))
+        }
+    )
+
+    DOMNode(
+        tag = "vertical-scrollbar",
+        style = style,
+        children = listOf(track)
+    )
+}
+
 // Simple vertical splitter component: renders a vertical bar filling its styled height.
 fun VerticalSplitter(
     style: StyleSet,
@@ -1268,16 +1345,17 @@ fun GitComponent(
     val commits = gitService.listCommits(40)
     val branch = gitService.currentBranch()
     val (message, setMessage) = useState { "" }
+    val (commitScroll, setCommitScroll) = useState { 0 }
     val statusText = if (statusEntries.isEmpty()) "(clean)" else statusEntries.joinToString("\n") { "${it.code.padEnd(2)} ${it.path}" }
 
+    val commitLineWidth = (safeWidth - 2).coerceAtLeast(20)
     val commitLines = commits.map { c ->
         val hashShort = c.hash.take(8).padEnd(8, ' ')
         val dateStr = c.date?.let { commitDateFormatter.format(it) } ?: "----"
         val author = c.author.take(12).padEnd(12, ' ')
-        val msg = c.message.lines().firstOrNull()?.take(safeWidth.coerceAtLeast(40)) ?: ""
+        val msg = c.message.lines().firstOrNull() ?: ""
         "$hashShort  $dateStr  $author  $msg"
-    }
-    val commitText = commitLines.joinToString("\n")
+    }.map { line -> line.take(commitLineWidth) }
 
     val header = DOMNode(
         tag = "git-header",
@@ -1329,10 +1407,21 @@ fun GitComponent(
     )
 
     val commitsTop = buttonsTop + 2
-    val commitsBox = DOMNode(
+    val commitViewportHeight = (safeHeight - commitsTop).coerceAtLeast(3)
+    val maxCommitOffset = (commitLines.size - commitViewportHeight).coerceAtLeast(0)
+    val clampedCommitScroll = commitScroll.coerceIn(0, maxCommitOffset)
+    val commitText = commitLines.drop(clampedCommitScroll).take(commitViewportHeight).joinToString("\n")
+    val commitTextBox = DOMNode(
         tag = "git-commits",
         text = commitText,
-        style = StyleSet.parse("left:0; top:${commitsTop}; right:${safeWidth - 1}; bottom:${safeHeight - 1}; fg:#f6f6f6; bg:#2f345a")
+        style = StyleSet.parse("left:0; top:${commitsTop}; right:${safeWidth - 3}; bottom:${safeHeight - 1}; fg:#f6f6f6; bg:#2f345a")
+    )
+    val commitScrollbar = VerticalScrollBar(
+        tree = tree,
+        style = StyleSet.parse("left:${safeWidth - 2}; top:${commitsTop}; right:${safeWidth - 1}; bottom:${safeHeight - 1}; bg:#2f2f2f"),
+        contentHeight = commitLines.size.coerceAtLeast(commitViewportHeight),
+        scrollOffset = clampedCommitScroll,
+        onScrollTo = { newOffset -> setCommitScroll(newOffset.coerceIn(0, maxCommitOffset)) }
     )
 
     DOMNode(
@@ -1347,7 +1436,8 @@ fun GitComponent(
             commitBtn,
             tagBtn,
             pushBtn,
-            commitsBox
+            commitTextBox,
+            commitScrollbar
         )
     )
 }
