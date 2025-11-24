@@ -922,9 +922,14 @@ fun VerticalScrollBar(
         return if (trackRoom == 0 || maxOffset == 0) 0 else (pos * maxOffset) / trackRoom
     }
 
+    // Wider visuals: two columns for track/indicator to make it easier to grab
+    val indicatorStyle = StyleSet.parse(
+        "left:0; top:${indicatorTop}; right:1; bottom:${indicatorTop + indicatorHeight - 1}"
+    )
+
     val indicator = DOMNode(
         tag = "scrollbar-indicator",
-        style = StyleSet.parse("left:0; top:${indicatorTop}; right:0; bottom:${indicatorTop + indicatorHeight - 1}"),
+        style = indicatorStyle,
         id = "scrollbar-indicator",
         onMouseDown = { ev ->
             val y = ev.relY ?: 0
@@ -944,7 +949,7 @@ fun VerticalScrollBar(
 
     val track = DOMNode(
         tag = "scrollbar-track",
-        style = StyleSet.parse("left:0; top:0; right:0; bottom:${vh - 1}"),
+        style = StyleSet.parse("left:0; top:0; right:1; bottom:${vh - 1}"),
         id = "scrollbar-track",
         onMouseDown = { ev ->
             val y = ev.relY ?: 0
@@ -1203,7 +1208,7 @@ fun VerticalTabsHost(
 ): DOMNode = renderComponent(tree, key) {
     val hostWidth = (style.right ?: 0) - (style.left ?: 0) + 1
     val hostHeight = (style.bottom ?: 0) - (style.top ?: 0) + 1
-    val stripeWidth = 5
+    val stripeWidth = 10
     val buttonHeight = 3
     val initialTab = tabs.keys.firstOrNull()
     val (activeTab, setActiveTab) = useState { initialTab ?: "" }
@@ -1221,12 +1226,11 @@ fun VerticalTabsHost(
         val top = idx * buttonHeight
         val bottom = top + buttonHeight - 1
         val selected = entry.key == activeTab
-        val bg = if (selected) Color(120, 130, 200) else Color(70, 80, 130)
-        val fg = Color(220, 220, 230)
+        val tabTag = if (selected) "tab-button::selection" else "tab-button"
 
         DOMNode(
-            tag = "tab-button",
-            id = "tab-button",
+            tag = tabTag,
+            id = tabTag,
             key=key,
             text = makeLabel(entry.key),
             style = StyleSet.parse("left:0; top:${top}; right:${stripeWidth - 1}; bottom:${bottom}"),
@@ -1244,8 +1248,8 @@ fun VerticalTabsHost(
 
     DOMNode(
         tag = "vertical-tabs-host",
-        style = style,
         id = "vertical-tabs-host",
+        style = style,
         children = listOfNotNull(
                 DOMNode(
                     tag = "tab-strip",
@@ -1337,7 +1341,7 @@ fun FileTreeComponent(
 
     val scrollbar = VerticalScrollBar(
         tree = tree,
-        style = StyleSet.parse("left:${safeWidth - 2}; top:0; right:${safeWidth - 2}; bottom:${safeHeight - 1}"),
+        style = StyleSet.parse("left:${safeWidth - 3}; top:0; right:${safeWidth - 2}; bottom:${safeHeight - 1}"),
         contentHeight = entries.size.coerceAtLeast(viewportHeight),
         scrollOffset = clampedScroll,
         onScrollTo = { off -> setScrollOffset(off.coerceIn(0, maxOffset)) }
@@ -1453,7 +1457,7 @@ fun GitComponent(
     )
     val commitScrollbar = VerticalScrollBar(
         tree = tree,
-        style = StyleSet.parse("left:${safeWidth - 2}; top:${commitsTop}; right:${safeWidth - 1}; bottom:${safeHeight - 1}"),
+        style = StyleSet.parse("left:${safeWidth - 3}; top:${commitsTop}; right:${safeWidth - 1}; bottom:${safeHeight - 1}"),
         contentHeight = commitLines.size.coerceAtLeast(commitViewportHeight),
         scrollOffset = clampedCommitScroll,
         onScrollTo = { newOffset -> setCommitScroll(newOffset.coerceIn(0, maxCommitOffset)) }
@@ -1563,7 +1567,7 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
         val splitter = DOMNode(
             tag = "splitter",
             id = "splitter",
-            text = "│\n".repeat(mainHeight-1),
+            text = "⣿\n".repeat(mainHeight),
             style = StyleSet.parse("left:${clampedSplit - 1}; top:0; right:${clampedSplit}; bottom:${mainHeight - 1}"),
             onMouseDown = { ev ->
                 val mx = ev.x ?: return@DOMNode

@@ -24,8 +24,8 @@ main-area {
 }
 
 splitter {
-    bg: #222a3f;
-    fg: #f6f7fb;
+    bg: #0f1424;
+    fg: #202b4e;
 }
 
 content {
@@ -39,7 +39,7 @@ status {
 }
 
 vertical-tabs-host {
-    bg: #151a2b;
+    bg: #3c4678;
     fg: #e6eaf7;
 }
 
@@ -50,6 +50,10 @@ tab-strip {
 
 tab-button {
     bg: #242c44;
+    fg: #f6f7fb;
+}
+tab-button::selection {
+    bg: #3c4678;
     fg: #f6f7fb;
 }
 
