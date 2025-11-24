@@ -310,10 +310,19 @@ class StyleSheet(
 
 private fun applyStyles(dom: DOMNode, sheet: StyleSheet?): DOMNode {
     val resolvedStyle = StyleSet()
-    if (sheet != null && dom.id != null) {
-        resolvedStyle.mergeFrom(sheet.getStyle(dom.id))
+    if (sheet != null) {
+        // Base styles by id then tag
+        dom.id?.let { resolvedStyle.mergeFrom(sheet.getStyle(it)) }
+        resolvedStyle.mergeFrom(sheet.getStyle(dom.tag))
+        // Focus styles
+        if (dom.hasFocus) {
+            dom.id?.let { resolvedStyle.mergeFrom(sheet.getStyle("$it::focus")) }
+            resolvedStyle.mergeFrom(sheet.getStyle("${dom.tag}::focus"))
+        }
     }
+    // Inline style overrides everything else
     resolvedStyle.mergeFrom(dom.style)
+
     val styledChildren = dom.children.map { applyStyles(it, sheet) }
     return dom.copy(style = resolvedStyle, children = styledChildren)
 }
@@ -784,6 +793,7 @@ data class DOMNode(
     val styleId: String? = null,
     val style: StyleSet = StyleSet(),
     val id: String? = null,
+    var hasFocus: Boolean = false,
 
     // Event callbacks — all get UIEvent
     val onMouseDown: ((UIEvent) -> Unit)? = null,
@@ -1095,6 +1105,54 @@ private fun hitTest(x: Int, y: Int, node: DOMNode, parentX: Int, parentY: Int): 
     return x in x1 until x2 && y in y1 until y2
 }
 
+private fun findTopmostHit(node: DOMNode, event: UIEvent, parentX: Int, parentY: Int): DOMNode? {
+    val x = event.x ?: return null
+    val y = event.y ?: return null
+
+    val left   = node.style.left   ?: 0
+    val top    = node.style.top    ?: 0
+    val right  = node.style.right  ?: 0
+    val bottom = node.style.bottom ?: 0
+
+    val x1 = parentX + left
+    val y1 = parentY + top
+    val x2 = parentX + right + 1
+    val y2 = parentY + bottom + 1
+
+    var hitChild: DOMNode? = null
+    for (child in node.children) {
+        val childHit = findTopmostHit(child, event, x1, y1)
+        if (childHit != null) hitChild = childHit
+    }
+    if (hitChild != null) return hitChild
+    return if (x in x1 until x2 && y in y1 until y2) node else null
+}
+
+private fun clearFocus(node: DOMNode) {
+    node.hasFocus = false
+    node.children.forEach { clearFocus(it) }
+}
+
+private fun setFocus(node: DOMNode, id: String): Boolean {
+    if (node.id == id) {
+        node.hasFocus = true
+        return true
+    }
+    for (child in node.children) {
+        if (setFocus(child, id)) return true
+    }
+    return false
+}
+
+private fun findNodeById(node: DOMNode, id: String): DOMNode? {
+    if (node.id == id) return node
+    for (child in node.children) {
+        val found = findNodeById(child, id)
+        if (found != null) return found
+    }
+    return null
+}
+
 private fun dispatchEventToDom(node: DOMNode, event: UIEvent, parentX: Int, parentY: Int) {
 
     // Traverse children first (deepest-first)
@@ -1113,10 +1171,10 @@ private fun dispatchEventToDom(node: DOMNode, event: UIEvent, parentX: Int, pare
         "mouse_move",
         "mouse_drag"   -> if (inside) node.onMouseMove?.invoke(localizedEvent)
         "mouse_scroll" -> if (inside) node.onMouseScroll?.invoke(localizedEvent)
-        "key_down"     -> node.onKeyDown?.invoke(localizedEvent)
-        "key_up"       -> node.onKeyUp?.invoke(localizedEvent)
-        "focus_gained" -> node.onFocusGained?.invoke(localizedEvent)
-        "focus_lost"   -> node.onFocusLost?.invoke(localizedEvent)
+        "key_down"     -> if (node.hasFocus) node.onKeyDown?.invoke(localizedEvent)
+        "key_up"       -> if (node.hasFocus) node.onKeyUp?.invoke(localizedEvent)
+        "focus_gained" -> if (node.hasFocus) node.onFocusGained?.invoke(localizedEvent)
+        "focus_lost"   -> if (!node.hasFocus) node.onFocusLost?.invoke(localizedEvent)
         "resize"       -> node.onResize?.invoke(localizedEvent)
     }
 }
@@ -1676,6 +1734,8 @@ fun runApp(
     val appContext: AppContext = AppContext()
     val tree = ComponentTreeManager()
     var lastDom: DOMNode = DOMNode("empty",)
+    var focusedId: String? = null
+    // var focusedId: String? = null
     val styleSheet = StyleSheet.loadFromFiles(styleFiles)
 
     // Try to enter raw mode for ANSI terminals so key/mouse events work and echo is off.
@@ -1695,6 +1755,8 @@ fun runApp(
             // Render frame
             tree.beginFrame()
             val rawRoot = rootFn(tree)
+            clearFocus(rawRoot)
+            focusedId?.let { setFocus(rawRoot, it) }
             val root = applyStyles(rawRoot, styleSheet)
             tree.endFrame()
             lastDom = root
@@ -1711,6 +1773,12 @@ fun runApp(
                     renderer.requestExit()
                 } else {
                     dispatchEventToDom(lastDom, event, 0, 0)
+                    if (event.x != null && event.y != null) {
+                        val hit = findTopmostHit(lastDom, event, 0, 0)
+                        if (hit?.id != null) {
+                            focusedId = hit.id
+                        }
+                    }
                 }
             } else {
                 // avoid busy loop when renderer provides no events
