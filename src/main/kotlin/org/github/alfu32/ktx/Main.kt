@@ -918,14 +918,7 @@ fun VerticalScrollBar(
 
     val indicator = DOMNode(
         tag = "scrollbar-indicator",
-        style = StyleSet(
-            left = 0,
-            top = indicatorTop,
-            right = 0,
-            bottom = indicatorTop + indicatorHeight - 1,
-            bg = Color(230, 200, 80),
-            fg = Color(30, 30, 30)
-        ),
+        style = StyleSet.parse("left:0; top:${indicatorTop}; right:0; bottom:${indicatorTop + indicatorHeight - 1}; bg:#e6c850; fg:#1e1e1e"),
         onMouseDown = { ev ->
             val y = ev.relY ?: 0
             setDragging(true)
@@ -944,14 +937,7 @@ fun VerticalScrollBar(
 
     val track = DOMNode(
         tag = "scrollbar-track",
-        style = StyleSet(
-            left = 0,
-            top = 0,
-            right = 0,
-            bottom = vh - 1,
-            bg = Color(60, 60, 60),
-            fg = Color(200, 200, 200)
-        ),
+        style = StyleSet.parse("left:0; top:0; right:0; bottom:${vh - 1}; bg:#2f2f2f; fg:#d8d8d8"),
         children = listOf(indicator),
         onMouseDown = { ev ->
             val y = ev.relY ?: 0
@@ -1231,14 +1217,7 @@ fun VerticalTabsHost(
             tag = "tab-button",
             id = "tab-${entry.key}",
             text = makeLabel(entry.key),
-            style = StyleSet(
-                left = 0,
-                top = top,
-                right = stripeWidth - 1,
-                bottom = bottom,
-                fg = fg,
-                bg = bg
-            ),
+            style = StyleSet.parse("left:0; top:${top}; right:${stripeWidth - 1}; bottom:${bottom}; fg:${"#%02x%02x%02x".format(fg.r, fg.g, fg.b)}; bg:${"#%02x%02x%02x".format(bg.r, bg.g, bg.b)}"),
             onMouseDown = {
                 if (activeTab != entry.key) {
                     setActiveTab(entry.key)
@@ -1257,27 +1236,13 @@ fun VerticalTabsHost(
         children = listOfNotNull(
             DOMNode(
                 tag = "tab-strip",
-                style = StyleSet(
-                    left = 0,
-                    top = 0,
-                    right = stripeWidth - 1,
-                    bottom = (hostHeight - 1).coerceAtLeast(0),
-                    bg = Color(50, 60, 110),
-                    fg = Color(200, 200, 210)
-                ),
+                style = StyleSet.parse("left:0; top:0; right:${stripeWidth - 1}; bottom:${(hostHeight - 1).coerceAtLeast(0)}; bg:#323768; fg:#c8c8d2"),
                 children = buttons
             ),
             content?.let {
                 DOMNode(
                     tag = "tab-content-area",
-                    style = StyleSet(
-                        left = stripeWidth,
-                        top = 0,
-                        right = stripeWidth + contentWidth - 1,
-                        bottom = (hostHeight - 1).coerceAtLeast(0),
-                        bg = Color(80, 90, 150),
-                        fg = Color(210, 210, 220)
-                    ),
+                    style = StyleSet.parse("left:${stripeWidth}; top:0; right:${stripeWidth + contentWidth - 1}; bottom:${(hostHeight - 1).coerceAtLeast(0)}; bg:#505a96; fg:#d2d6dc"),
                     children = listOf(it)
                 )
             }
