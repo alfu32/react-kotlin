@@ -1122,10 +1122,6 @@ fun FileTreeComponent(
         val bg = if (entry.typ == "folder") "#4c548f" else "#3c4678"
         val fg = if (entry.fullPath == selected?.fullPath) "#fded7d" else "#e0e0e6"
 
-        var openerLocation = text.indexOf("[+]")
-        openerLocation = if(openerLocation == -1 ) text.indexOf("[-]") else openerLocation
-        openerLocation+=((style.left ?: 0)+(5))
-
         DOMNode(
             tag = "${tag}::entry",
             id = entry.fullPath,
@@ -1133,20 +1129,23 @@ fun FileTreeComponent(
             style = StyleSet.parse("left:0;top:${idx};right:${safeWidth - 1};bottom:${idx};fg:${fg};bg:${bg};"),
             onMouseDown = { event: UIEvent ->
                 if (entry.typ == "folder") {
-                    // we detect if it clicks inside the [+] [-] toggler button
-                    var openerLocation = text.indexOf("[+]")
-                    openerLocation = if(openerLocation == -1 ) text.indexOf("[-]") else openerLocation
-                    openerLocation+=(style.left ?: 0)
-                    if(((event.relX?:-1) >= openerLocation) && ((event.relX?:-1) <= (openerLocation+3))) {
-                        // click is inside the [+] [-] toggler button
+                    val openerColumn = run {
+                        val plusIdx = text.indexOf("[+]")
+                        val minusIdx = text.indexOf("[-]")
+                        when {
+                            plusIdx >= 0 -> plusIdx
+                            minusIdx >= 0 -> minusIdx
+                            else -> -1
+                        }
+                    }
+                    val toggleHit = openerColumn >= 0 &&
+                        (event.relX ?: -1) in openerColumn..(openerColumn + 2)
+                    if (toggleHit) {
                         fileTree.toggle(entry.fullPath)
                         fileTree.refreshOpenNodes()
                         setVersion(version + 1)
-                    } else if(((event.x?:-1) > (openerLocation+3))) {
-                        // click is outside the [+] [-] toggler button
-                        onFolderSelected(entry)
                     } else {
-                        /* no-op */
+                        onFolderSelected(entry)
                     }
                 } else {
                     onFileSelected(entry)
