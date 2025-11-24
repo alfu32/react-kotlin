@@ -316,8 +316,8 @@ private fun applyStyles(dom: DOMNode, sheet: StyleSheet?): DOMNode {
         resolvedStyle.mergeFrom(sheet.getStyle(dom.tag))
         // Focus styles
         if (dom.hasFocus) {
-            dom.id?.let { resolvedStyle.mergeFrom(sheet.getStyle("$it::focus")) }
-            resolvedStyle.mergeFrom(sheet.getStyle("${dom.tag}::focus"))
+            dom.id?.let { resolvedStyle.mergeFrom(sheet.getStyle("$it:focus")) }
+            resolvedStyle.mergeFrom(sheet.getStyle("${dom.tag}:focus"))
         }
     }
     // Inline style overrides everything else
@@ -876,8 +876,8 @@ fun HorizontalSplitter(
     )
 }
 
-private fun renderBuffer(buffer: ITextBuffer, width: Int, height: Int): String {
-    val slice = buffer.viewportSlice(EditorViewport(0, 0, width, height), gutterWidth = 0)
+private fun renderBuffer(buffer: ITextBuffer, width: Int, height: Int, startLine: Int = 0): String {
+    val slice = buffer.viewportSlice(EditorViewport(0, startLine, width, height), gutterWidth = 0)
     return slice.lines.joinToString("\n") { line ->
         line.segments.joinToString("") { it.text }
     }
@@ -900,14 +900,15 @@ private fun handleKeyForBuffer(buffer: ITextBuffer, key: String?, singleLine: Bo
     return buffer.text() != before
 }
 
-private fun handleMouseToBuffer(buffer: ITextBuffer, ev: UIEvent, singleLine: Boolean = false) {
-    val line = (ev.relY ?: 0).coerceAtLeast(0)
+private fun handleMouseToBuffer(buffer: ITextBuffer, ev: UIEvent, singleLine: Boolean = false, scrollOffset: Int = 0) {
+    val line = (ev.relY ?: 0).coerceAtLeast(0) + scrollOffset
     val col = (ev.relX ?: 0).coerceAtLeast(0)
     val targetLine = if (singleLine) 0 else line
     buffer.moveCursorTo(Position(targetLine, col), expand = false)
 }
 
 fun Textarea(
+    tree: ComponentTreeManager,
     buffer: ITextBuffer,
     style: StyleSet,
     onChange: (ITextBuffer) -> Unit = {},
@@ -916,34 +917,67 @@ fun Textarea(
     onMouseMove: ((UIEvent) -> Unit)? = null,
     onKeyUp: ((UIEvent) -> Unit)? = null,
     key: String? = null
-): DOMNode {
+): DOMNode = renderComponent(tree, key) {
     val left = style.left ?: 0
     val right = style.right ?: left
-    val width = (right - left + 1).coerceAtLeast(1)
+    val totalWidth = (right - left + 1).coerceAtLeast(1)
     val top = style.top ?: 0
     val bottom = style.bottom ?: top
-    val height = (bottom - top + 1).coerceAtLeast(1)
-    val rendered = renderBuffer(buffer, width, height)
-    return DOMNode(
-        tag = "textarea",
+    val totalHeight = (bottom - top + 1).coerceAtLeast(7) // enforce min height
+
+    val scrollbarWidth = 2
+    val contentWidth = (totalWidth - scrollbarWidth).coerceAtLeast(1)
+    val viewportHeight = totalHeight
+
+    val (scrollOffset, setScrollOffset) = useState { 0 }
+    val totalLines = buffer.text().split('\n').size
+    val maxOffset = (totalLines - viewportHeight).coerceAtLeast(0)
+    val clampedOffset = scrollOffset.coerceIn(0, maxOffset)
+
+    val rendered = renderBuffer(buffer, contentWidth, viewportHeight, clampedOffset)
+
+    val contentNode = DOMNode(
+        tag = "textarea-content",
         text = rendered,
-        style = style,
-        id = "textarea",
+        style = StyleSet.parse("left:0; top:0; right:${contentWidth - 1}; bottom:${viewportHeight - 1}"),
+        id = "textarea-content",
         onMouseDown = { ev ->
-            handleMouseToBuffer(buffer, ev, singleLine = false)
+            handleMouseToBuffer(buffer, ev, singleLine = false, scrollOffset = clampedOffset)
             onMouseDown?.invoke(ev)
         },
         onMouseUp = onMouseUp,
         onMouseMove = { ev ->
-            handleMouseToBuffer(buffer, ev, singleLine = false)
+            handleMouseToBuffer(buffer, ev, singleLine = false, scrollOffset = clampedOffset)
             onMouseMove?.invoke(ev)
         },
         onKeyDown = { ev ->
             if (handleKeyForBuffer(buffer, ev.key, singleLine = false)) onChange(buffer)
         },
         onKeyUp = onKeyUp,
-        key = key
     )
+
+    val scrollbar = VerticalScrollBar(
+        tree = tree,
+        style = StyleSet.parse("left:${contentWidth}; top:0; right:${contentWidth + scrollbarWidth - 1}; bottom:${viewportHeight - 1}"),
+        contentHeight = totalLines.coerceAtLeast(viewportHeight),
+        scrollOffset = clampedOffset,
+        onScrollTo = { off -> setScrollOffset(off.coerceIn(0, maxOffset)) }
+    )
+
+    // Apply viewport offset by adjusting buffer? simplest: re-render buffer with slice starting at offset
+    val slicedRendered = renderBuffer(buffer, contentWidth, viewportHeight, clampedOffset)
+
+    contentNode.copy(
+        text = slicedRendered
+    ).let { content ->
+        DOMNode(
+            tag = "textarea",
+            text = null,
+            style = style,
+            id = "textarea",
+            children = listOf(content, scrollbar)
+        )
+    }
 }
 
 fun InputText(
@@ -979,6 +1013,71 @@ fun InputText(
         },
         onKeyUp = onKeyUp,
         key = key
+    )
+}
+
+fun EditorView(
+    tree: ComponentTreeManager,
+    buffer: ITextBuffer,
+    style: StyleSet,
+    onChange: (ITextBuffer) -> Unit = {},
+    key: String? = null
+): DOMNode = renderComponent(tree, key) {
+    val totalWidth = ((style.right ?: 0) - (style.left ?: 0) + 1).coerceAtLeast(10)
+    val totalHeight = ((style.bottom ?: 0) - (style.top ?: 0) + 1).coerceAtLeast(10)
+    val scrollbarWidth = 2
+    val totalLines = buffer.text().split('\n').size.coerceAtLeast(1)
+    val gutterWidth = (totalLines.toString().length + 1).coerceAtLeast(3)
+    val contentWidth = (totalWidth - scrollbarWidth - gutterWidth).coerceAtLeast(1)
+    val viewportHeight = totalHeight
+
+    val (scrollOffset, setScrollOffset) = useState { 0 }
+    val maxOffset = (totalLines - viewportHeight).coerceAtLeast(0)
+    val clampedOffset = scrollOffset.coerceIn(0, maxOffset)
+
+    val slice = buffer.viewportSlice(
+        EditorViewport(0, clampedOffset, contentWidth, viewportHeight),
+        gutterWidth = gutterWidth
+    )
+    val rendered = slice.lines.joinToString("\n") { line ->
+        val base = buildString {
+            append(line.gutter)
+            line.segments.forEach { append(it.text) }
+        }
+        base
+    }
+
+    val contentNode = DOMNode(
+        tag = "editor-content",
+        text = rendered,
+        style = StyleSet.parse("left:0; top:0; right:${gutterWidth + contentWidth - 1}; bottom:${viewportHeight - 1}"),
+        id = "editor-content",
+        onKeyDown = { ev ->
+            if (handleKeyForBuffer(buffer, ev.key, singleLine = false)) onChange(buffer)
+        },
+        onMouseDown = { ev ->
+            val adj = ev.alterCopy(UIEvent(kind = ev.kind, relX = (ev.relX ?: 0) - gutterWidth, relY = ev.relY))
+            handleMouseToBuffer(buffer, adj, singleLine = false, scrollOffset = clampedOffset)
+        },
+        onMouseMove = { ev ->
+            val adj = ev.alterCopy(UIEvent(kind = ev.kind, relX = (ev.relX ?: 0) - gutterWidth, relY = ev.relY))
+            handleMouseToBuffer(buffer, adj, singleLine = false, scrollOffset = clampedOffset)
+        }
+    )
+
+    val scrollbar = VerticalScrollBar(
+        tree = tree,
+        style = StyleSet.parse("left:${gutterWidth + contentWidth}; top:0; right:${gutterWidth + contentWidth + scrollbarWidth - 1}; bottom:${viewportHeight - 1}"),
+        contentHeight = totalLines.coerceAtLeast(viewportHeight),
+        scrollOffset = clampedOffset,
+        onScrollTo = { off -> setScrollOffset(off.coerceIn(0, maxOffset)) }
+    )
+
+    DOMNode(
+        tag = "editor",
+        style = style,
+        id = "editor",
+        children = listOf(contentNode, scrollbar)
     )
 }
 
@@ -1556,6 +1655,7 @@ fun GitComponent(
 
     val (messageBuf, _) = useState { TextBuffer().apply { loadText(message) } }
     val messageArea = Textarea(
+        tree = tree,
         buffer = messageBuf,
         style = StyleSet.parse("left:0; top:${messageBoxTop + 1}; right:${safeWidth - 1}; bottom:${messageBoxTop + messageBoxHeight}"),
         onChange = { buf -> setMessage(buf.text()) }
@@ -1624,13 +1724,15 @@ fun GitComponent(
 fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
     renderComponent(tree) {
         // --- Global-ish app state stored in hook slots
-        val (splitterPos, setSplitterPos) = useState { 40 }
-        val (dragging, setDragging) = useState { false }
-        val (dragStartX, setDragStartX) = useState { 0 }
-        val (dragStartSplit, setDragStartSplit) = useState { splitterPos }
-        val (status, setStatus) = useState { "Ready" }
-        val (selectedFileTreeEntry,setSelectedFileTreeEntry) = useState<FileTreeEntry?> { null }
-        val statText = "Pos:$splitterPos,drag:$dragging,StartX:$dragStartX,Split:$dragStartSplit"
+    val (splitterPos, setSplitterPos) = useState { 40 }
+    val (dragging, setDragging) = useState { false }
+    val (dragStartX, setDragStartX) = useState { 0 }
+    val (dragStartSplit, setDragStartSplit) = useState { splitterPos }
+    val (status, setStatus) = useState { "Ready" }
+    val (selectedFileTreeEntry,setSelectedFileTreeEntry) = useState<FileTreeEntry?> { null }
+    val (editorBuffer, _) = useState { TextBuffer() }
+    val (loadedPath, setLoadedPath) = useState { "" }
+    val statText = "Pos:$splitterPos,drag:$dragging,StartX:$dragStartX,Split:$dragStartSplit"
 
         // --- Layout math
         val minPanelWidth = 20
@@ -1639,6 +1741,12 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
         val mainHeight = rows - 2
         val tabContentWidth = (clampedSplit - 5).coerceAtLeast(1)
         val workspaceRoot = System.getProperty("user.dir") ?: "."
+        if (selectedFileTreeEntry?.typ == "file" && selectedFileTreeEntry.fullPath != loadedPath) {
+            val content = runCatching { File(selectedFileTreeEntry.fullPath).readText() }
+                .getOrElse { err -> "Unable to read file:\\n${err.message ?: err.toString()}" }
+            editorBuffer.loadText(content)
+            setLoadedPath(selectedFileTreeEntry.fullPath)
+        }
 
         // --- Components
         val header = DOMNode(
@@ -1713,14 +1821,11 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             },
         )
 
-        val content = DOMNode(
-            tag = "content",
-            id = "content",
-            text = "Editor\n[placeholder]",
+        val content = EditorView(
+            tree = tree,
+            buffer = editorBuffer,
             style = StyleSet.parse("left:${clampedSplit}; top:0; right:${cols - 1}; bottom:${mainHeight - 1}"),
-            onMouseMove = {ev ->
-                setStatus("$statText,content,hover,x${ev.x},y${ev.y}")
-            }
+            onChange = { _ -> setStatus("Edited ${loadedPath}") }
         )
 
         val statusBar = DOMNode(
