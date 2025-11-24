@@ -1956,12 +1956,27 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             editorBuffer.loadText(content)
             setLoadedPath(selectedFileTreeEntry.fullPath)
         }
+        val time = java.time.LocalTime.now().withNano(0)
+        val language = when (loadedPath.substringAfterLast('.', "")) {
+            "kt" -> "Kotlin"
+            "java" -> "Java"
+            "md" -> "Markdown"
+            "py" -> "Python"
+            else -> "Text"
+        }
+        val topStatusLine = listOf(
+            "$time",
+            currentBranch(),
+            workspaceRoot.replace("/home/devlin","~"),
+            "${mouseAbs.first},${mouseAbs.second} rel ${mouseRel.first},${mouseRel.second}",
+            "${selectedFileTreeEntry?.fullPath?.replace(workspaceRoot,"")} $language"
+        )
 
         // --- Components
         val header = DOMNode(
             tag = "header",
             id = "header",
-            text = " Kotlin TUI Demo (q=quit) ",
+            text = " Kotlin TUI Demo (~=quit) ${topStatusLine.joinToString(" | ")}",
             style = StyleSet.parse("left:0; top:0; right:${cols - 1}; bottom:0"),
             onMouseMove = {ev ->
                 // setStatus("$statText,header,hover,x${ev.x},y${ev.y}")
@@ -2035,21 +2050,10 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             buffer = editorBuffer,
             style = StyleSet.parse("left:${clampedSplit+3}; top:0; right:${cols - 2}; bottom:${mainHeight - 1}"),
             filePath = loadedPath,
-            language = when (loadedPath.substringAfterLast('.', "")) {
-                "kt" -> "Kotlin"
-                "java" -> "Java"
-                "md" -> "Markdown"
-                "py" -> "Python"
-                else -> "Text"
-            },
+            language = language,
             onChange = { _ -> /*setStatus("Edited ${loadedPath}")*/ },
             onStateChange = { state ->
-                val time = java.time.LocalTime.now().withNano(0)
                 val statusLine = listOf(
-                    "$time",
-                    currentBranch(),
-                    workspaceRoot,
-                    "${mouseAbs.first},${mouseAbs.second} rel ${mouseRel.first},${mouseRel.second}",
                     "${state.filePath.replace(workspaceRoot,"")} ${state.language} line ${state.cursorLine + 1}:${state.cursorColumn + 1} sel=${state.selection.length}"
                 )
                 setStatus(statusLine.joinToString(" | "))
