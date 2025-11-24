@@ -1,123 +1,123 @@
 default {
-    fg: #cfd3e6;
-    bg: #1a1f3c;
+    fg: #e6eaf7;
+    bg: #0f1424;
 }
 
 root {
-    bg: #1a1f3c;
-    fg: #cfd3e6;
+    bg: #0f1424;
+    fg: #e6eaf7;
 }
 
 header {
-    fg: #bebebb;
-    bg: #223388;
+    fg: #f6f7fb;
+    bg: #1c2133;
 }
 
 sidebar {
-    fg: #bebebb;
-    bg: #636fab;
+    fg: #e6eaf7;
+    bg: #181d2c;
 }
 
 main-area {
-    bg: #111536;
-    fg: #d8d8e0;
+    bg: #0f1424;
+    fg: #e6eaf7;
 }
 
 splitter {
-    bg: #808080;
-    fg: #bebebb;
+    bg: #222a3f;
+    fg: #f6f7fb;
 }
 
 content {
-    bg: #182460;
-    fg: #bebebb;
+    bg: #0f1424;
+    fg: #e6eaf7;
 }
 
 status {
-    bg: #4d4d4d;
-    fg: #bebebb;
+    bg: #1a1f30;
+    fg: #e6eaf7;
 }
 
 vertical-tabs-host {
-    bg: #2d325f;
-    fg: #d4d7ea;
+    bg: #151a2b;
+    fg: #e6eaf7;
 }
 
 tab-strip {
-    bg: #323768;
-    fg: #d0d3e6;
+    bg: #1c2133;
+    fg: #dfe4f2;
 }
 
 tab-button {
-    bg: #4c527e;
-    fg: #f0f0ff;
+    bg: #242c44;
+    fg: #f6f7fb;
 }
 
 files-tab {
-    bg: #2f365f;
-    fg: #e0e0e6;
+    bg: #13192a;
+    fg: #e6eaf7;
 }
 
 notes-tab {
-    bg: #5a669f;
-    fg: #e0e0e0;
+    bg: #192033;
+    fg: #e6eaf7;
 }
 
 logs-tab {
-    bg: #4f5c8e;
-    fg: #e0e0e0;
+    bg: #1b2236;
+    fg: #e6eaf7;
 }
 
 file-entry {
-    bg: #3c4678;
-    fg: #e0e0e6;
+    bg: #1a2134;
+    fg: #e6eaf7;
 }
 
 vertical-scrollbar {
-    bg: #2f2f2f;
+    bg: #121727;
 }
 
 scrollbar-track {
-    bg: #2f2f2f;
-    fg: #d8d8d8;
+    bg: #121727;
+    fg: #9aa4bd;
 }
 
 scrollbar-indicator {
-    bg: #e6c850;
-    fg: #1e1e1e;
+    bg: #f0a030;
+    fg: #0f1424;
 }
 
 git-panel {
-    bg: #2d2f55;
-    fg: #f6f6f6;
+    bg: #13192a;
+    fg: #e6eaf7;
 }
 
 git-header {
-    bg: #3b2f4f;
-    fg: #ffcc66;
+    bg: #191f31;
+    fg: #f0a030;
 }
 
 git-status {
-    bg: #40467a;
-    fg: #f6f6f6;
+    bg: #1a2133;
+    fg: #e6eaf7;
 }
 
 git-message-label {
-    bg: #2d2f55;
-    fg: #f6f6f6;
+    bg: #161c2d;
+    fg: #e6eaf7;
 }
 
 textarea {
-    bg: #353b6f;
-    fg: #f6f6f6;
+    bg: #1a2237;
+    fg: #e6eaf7;
 }
 
 git-commits {
-    bg: #2f345a;
-    fg: #f6f6f6;
+    bg: #141b2d;
+    fg: #e6eaf7;
 }
 
 button {
-    bg: #f0c030;
-    fg: #2c2c2c;
+    bg: #f0a030;
+    fg: #0f1424;
 }

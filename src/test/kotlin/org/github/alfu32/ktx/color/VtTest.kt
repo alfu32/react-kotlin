@@ -1,14 +1,10 @@
 package org.github.alfu32.ktx.color
 
-import org.github.alfu32.ktx.Button
 import org.github.alfu32.ktx.ComponentTreeManager
 import org.github.alfu32.ktx.DOMNode
 import org.github.alfu32.ktx.UIEvent
 import org.github.alfu32.ktx.counterComponent
 import org.github.alfu32.ktx.listOfCounters
-import org.github.alfu32.ktx.renderComponent
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 
@@ -60,10 +56,13 @@ class ComponentSystemTests {
         val tree = ComponentTreeManager()
 
         fun doubleCounter() =
-            DOMNode("div", children = listOf(
-                counterComponent(tree),
-                counterComponent(tree)
-            ))
+            DOMNode(
+                "counter",
+                children = listOf(
+                    counterComponent(tree),
+                    counterComponent(tree)
+                ),
+            )
 
         tree.beginFrame()
         val dom1 = doubleCounter()
