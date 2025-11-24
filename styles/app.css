@@ -1,127 +1,135 @@
-default {
+.default {
     fg: #e6eaf7;
     bg: #0f1424;
 }
 
-root {
+.root {
     bg: #0f1424;
     fg: #e6eaf7;
 }
 
-header {
+.header {
     fg: #f6f7fb;
     bg: #1c2133;
 }
 
-sidebar {
+.sidebar {
     fg: #e6eaf7;
     bg: #181d2c;
 }
 
-main-area {
+.main-area {
     bg: #0f1424;
     fg: #e6eaf7;
 }
 
-splitter {
+.splitter {
     bg: #0f1424;
     fg: #202b4e;
 }
 
-content {
+.content {
     bg: #0f1424;
     fg: #e6eaf7;
 }
 
-status {
+.status {
     bg: #1a1f30;
     fg: #e6eaf7;
 }
 
-vertical-tabs-host {
+.vertical-tabs-host {
     bg: #3c4678;
     fg: #e6eaf7;
 }
 
-tab-strip {
+.tab-strip {
     bg: #1c2133;
     fg: #dfe4f2;
 }
 
-tab-button {
+.tab-button {
     bg: #242c44;
-    fg: #f6f7fb;
+    fg: #a5b2ff;
 }
-tab-button::selection {
+.tab-button:focus {
     bg: #3c4678;
-    fg: #f6f7fb;
+    fg: #dedee4;
+}
+.tab-button::selection {
+    bg: #3c4678;
+    fg: #dd9e00;
+}
+.tab-button::selection:focus {
+    bg: #3c4678;
+    fg: #ffbc33;
 }
 
-files-tab {
+.files-tab {
     bg: #13192a;
     fg: #e6eaf7;
 }
 
-notes-tab {
+.notes-tab {
     bg: #192033;
     fg: #e6eaf7;
 }
 
-logs-tab {
+.logs-tab {
     bg: #1b2236;
     fg: #e6eaf7;
 }
 
-file-entry {
+.file-entry {
     bg: #1a2134;
     fg: #e6eaf7;
 }
 
-vertical-scrollbar {
+.vertical-scrollbar {
     bg: #1f2942;
 }
 
-scrollbar-track {
+.scrollbar-track {
     bg: #1f2942;
     fg: #c4cbe0;
 }
 
-scrollbar-indicator {
+.scrollbar-indicator {
     bg: #f0a030;
     fg: #0b0f1b;
 }
 
-git-panel {
+.git-panel {
     bg: #13192a;
     fg: #e6eaf7;
 }
 
-git-header {
+.git-header {
     bg: #191f31;
     fg: #f0a030;
 }
 
-git-status {
+.git-status {
     bg: #1a2133;
     fg: #e6eaf7;
 }
 
-git-message-label {
+.git-message-label {
     bg: #161c2d;
     fg: #e6eaf7;
 }
 
-textarea {
+.textarea {
     bg: #1a2237;
     fg: #e6eaf7;
 }
 
-git-commits {
+.git-commits {
     bg: #141b2d;
     fg: #e6eaf7;
 }
 
-button {
+.button {
     bg: #f0a030;
     fg: #0f1424;
 }

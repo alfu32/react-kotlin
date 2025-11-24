@@ -876,35 +876,111 @@ fun HorizontalSplitter(
     )
 }
 
+private fun renderBuffer(buffer: ITextBuffer, width: Int, height: Int): String {
+    val slice = buffer.viewportSlice(EditorViewport(0, 0, width, height), gutterWidth = 0)
+    return slice.lines.joinToString("\n") { line ->
+        line.segments.joinToString("") { it.text }
+    }
+}
+
+private fun handleKeyForBuffer(buffer: ITextBuffer, key: String?, singleLine: Boolean = false): Boolean {
+    if (key == null) return false
+    val before = buffer.text()
+    when (key) {
+        "Backspace" -> buffer.deleteBackspace()
+        "Enter" -> if (!singleLine) buffer.insertNewline()
+        "Left" -> buffer.moveLeft()
+        "Right" -> buffer.moveRight()
+        "Up" -> buffer.moveUp()
+        "Down" -> buffer.moveDown()
+        "Home" -> buffer.moveStartOfLine()
+        "End" -> buffer.moveEndOfLine()
+        else -> if (key.length == 1) buffer.insertText(key)
+    }
+    return buffer.text() != before
+}
+
+private fun handleMouseToBuffer(buffer: ITextBuffer, ev: UIEvent, singleLine: Boolean = false) {
+    val line = (ev.relY ?: 0).coerceAtLeast(0)
+    val col = (ev.relX ?: 0).coerceAtLeast(0)
+    val targetLine = if (singleLine) 0 else line
+    buffer.moveCursorTo(Position(targetLine, col), expand = false)
+}
+
 fun Textarea(
-    text: String,
+    buffer: ITextBuffer,
     style: StyleSet,
-    onChange: (old: String, new: String) -> Unit = { _, _ -> },
+    onChange: (ITextBuffer) -> Unit = {},
     onMouseDown: ((UIEvent) -> Unit)? = null,
     onMouseUp: ((UIEvent) -> Unit)? = null,
     onMouseMove: ((UIEvent) -> Unit)? = null,
     onKeyUp: ((UIEvent) -> Unit)? = null,
     key: String? = null
-): DOMNode =
-    DOMNode(
+): DOMNode {
+    val left = style.left ?: 0
+    val right = style.right ?: left
+    val width = (right - left + 1).coerceAtLeast(1)
+    val top = style.top ?: 0
+    val bottom = style.bottom ?: top
+    val height = (bottom - top + 1).coerceAtLeast(1)
+    val rendered = renderBuffer(buffer, width, height)
+    return DOMNode(
         tag = "textarea",
-        text = text,
+        text = rendered,
         style = style,
         id = "textarea",
-        onMouseDown = onMouseDown,
+        onMouseDown = { ev ->
+            handleMouseToBuffer(buffer, ev, singleLine = false)
+            onMouseDown?.invoke(ev)
+        },
         onMouseUp = onMouseUp,
-        onMouseMove = onMouseMove,
+        onMouseMove = { ev ->
+            handleMouseToBuffer(buffer, ev, singleLine = false)
+            onMouseMove?.invoke(ev)
+        },
         onKeyDown = { ev ->
-            val k = ev.key ?: return@DOMNode
-            val next = when (k) {
-                "Backspace" -> if (text.isNotEmpty()) text.dropLast(1) else text
-                "Enter" -> text + "\n"
-                else -> if (k.length == 1) text + k else text
-            }
-            if (next != text) onChange(text, next)
+            if (handleKeyForBuffer(buffer, ev.key, singleLine = false)) onChange(buffer)
         },
         onKeyUp = onKeyUp,
+        key = key
     )
+}
+
+fun InputText(
+    buffer: ITextBuffer,
+    style: StyleSet,
+    onChange: (ITextBuffer) -> Unit = {},
+    onMouseDown: ((UIEvent) -> Unit)? = null,
+    onMouseUp: ((UIEvent) -> Unit)? = null,
+    onMouseMove: ((UIEvent) -> Unit)? = null,
+    onKeyUp: ((UIEvent) -> Unit)? = null,
+    key: String? = null
+): DOMNode {
+    val left = style.left ?: 0
+    val right = style.right ?: left
+    val width = (right - left + 1).coerceAtLeast(1)
+    val rendered = renderBuffer(buffer, width, 1)
+    return DOMNode(
+        tag = "input-text",
+        text = rendered,
+        style = style,
+        id = "input-text",
+        onMouseDown = { ev ->
+            handleMouseToBuffer(buffer, ev, singleLine = true)
+            onMouseDown?.invoke(ev)
+        },
+        onMouseUp = onMouseUp,
+        onMouseMove = { ev ->
+            handleMouseToBuffer(buffer, ev, singleLine = true)
+            onMouseMove?.invoke(ev)
+        },
+        onKeyDown = { ev ->
+            if (handleKeyForBuffer(buffer, ev.key, singleLine = true)) onChange(buffer)
+        },
+        onKeyUp = onKeyUp,
+        key = key
+    )
+}
 
 fun VerticalScrollBar(
     tree: ComponentTreeManager,
@@ -1478,10 +1554,11 @@ fun GitComponent(
         id = "git-message-label",
     )
 
+    val (messageBuf, _) = useState { TextBuffer().apply { loadText(message) } }
     val messageArea = Textarea(
-        text = message,
+        buffer = messageBuf,
         style = StyleSet.parse("left:0; top:${messageBoxTop + 1}; right:${safeWidth - 1}; bottom:${messageBoxTop + messageBoxHeight}"),
-        onChange = { _, new -> setMessage(new) }
+        onChange = { buf -> setMessage(buf.text()) }
     )
 
     val buttonsTop = messageBoxTop + messageBoxHeight + 1
