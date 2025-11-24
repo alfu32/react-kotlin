@@ -3,6 +3,9 @@ package org.github.alfu32.ktx
 import java.io.InputStream
 import java.io.Flushable
 import java.lang.ProcessBuilder
+import java.io.File
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 
 /*
@@ -768,13 +771,92 @@ data class DOMNode(
 fun Button(
     text: String,
     onClick: ((UIEvent) -> Unit)? = null,
-    style: StyleSet = StyleSet()
+    style: StyleSet = StyleSet(),
+    key: String? = null
 ): DOMNode =
     DOMNode(
         tag = "button",
         text = text,
         style = style,
         onMouseDown = onClick
+    )
+
+// Simple vertical splitter component: renders a vertical bar filling its styled height.
+fun VerticalSplitter(
+    style: StyleSet,
+    onMouseDown: ((UIEvent) -> Unit)? = null,
+    onMouseMove: ((UIEvent) -> Unit)? = null,
+    onMouseUp: ((UIEvent) -> Unit)? = null,
+    key: String? = null
+): DOMNode {
+    val top = style.top ?: 0
+    val bottom = style.bottom ?: top
+    val height = (bottom - top + 1).coerceAtLeast(1)
+    val bar = buildString {
+        repeat(height) { idx ->
+            append('│')
+            if (idx != height - 1) append('\n')
+        }
+    }
+    return DOMNode(
+        tag = "vertical-splitter",
+        text = bar,
+        style = style,
+        onMouseDown = onMouseDown,
+        onMouseMove = onMouseMove,
+        onMouseUp = onMouseUp
+    )
+}
+
+// Horizontal splitter component (single-row line).
+fun HorizontalSplitter(
+    style: StyleSet,
+    onMouseDown: ((UIEvent) -> Unit)? = null,
+    onMouseMove: ((UIEvent) -> Unit)? = null,
+    onMouseUp: ((UIEvent) -> Unit)? = null,
+    key: String? = null
+): DOMNode {
+    val left = style.left ?: 0
+    val right = style.right ?: left
+    val width = (right - left + 1).coerceAtLeast(1)
+    val line = "─".repeat(width)
+    return DOMNode(
+        tag = "horizontal-splitter",
+        text = line,
+        style = style,
+        onMouseDown = onMouseDown,
+        onMouseMove = onMouseMove,
+        onMouseUp = onMouseUp
+    )
+}
+
+fun Textarea(
+    text: String,
+    style: StyleSet,
+    onChange: (old: String, new: String) -> Unit = { _, _ -> },
+    onMouseDown: ((UIEvent) -> Unit)? = null,
+    onMouseUp: ((UIEvent) -> Unit)? = null,
+    onMouseMove: ((UIEvent) -> Unit)? = null,
+    onKeyUp: ((UIEvent) -> Unit)? = null,
+    key: String? = null
+): DOMNode =
+    DOMNode(
+        tag = "textarea",
+        text = text,
+        style = style,
+        onMouseDown = onMouseDown,
+        onMouseUp = onMouseUp,
+        onMouseMove = onMouseMove,
+        onKeyDown = { ev ->
+            val k = ev.key ?: return@DOMNode
+            val next = when (k) {
+                "Backspace" -> if (text.isNotEmpty()) text.dropLast(1) else text
+                "Enter" -> text + "\n"
+                else -> if (k.length == 1) text + k else text
+            }
+            if (next != text) onChange(text, next)
+        },
+        onKeyUp = onKeyUp
     )
 
 // Simple vertical splitter component: renders a vertical bar filling its styled height.
@@ -1160,6 +1242,115 @@ fun FileTreeComponent(
         children = lines
     )
 }
+
+/* =====================================================================
+   GIT PANEL COMPONENT (read-only actions + layout scaffolding)
+   ===================================================================== */
+
+private val commitDateFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd")
+        .withZone(ZoneId.systemDefault())
+
+fun GitComponent(
+    tree: ComponentTreeManager,
+    workspaceRoot: String,
+    style: StyleSet,
+    key: String? = null,
+    gitFactory: (File) -> GitService = { root -> JGitService(root) },
+    onCommit: (String) -> Unit = {},
+    onTag: (String) -> Unit = {},
+    onPush: () -> Unit = {}
+): DOMNode = renderComponent(tree, key) {
+    val safeWidth = ((style.right ?: 0) - (style.left ?: 0) + 1).coerceAtLeast(20)
+    val safeHeight = ((style.bottom ?: 0) - (style.top ?: 0) + 1).coerceAtLeast(12)
+    val (gitService, _) = useState { gitFactory(File(workspaceRoot)) }
+    val statusEntries = gitService.statusPorcelain()
+    val commits = gitService.listCommits(40)
+    val branch = gitService.currentBranch()
+    val (message, setMessage) = useState { "" }
+    val statusText = if (statusEntries.isEmpty()) "(clean)" else statusEntries.joinToString("\n") { "${it.code.padEnd(2)} ${it.path}" }
+
+    val commitLines = commits.map { c ->
+        val hashShort = c.hash.take(8).padEnd(8, ' ')
+        val dateStr = c.date?.let { commitDateFormatter.format(it) } ?: "----"
+        val author = c.author.take(12).padEnd(12, ' ')
+        val msg = c.message.lines().firstOrNull()?.take(safeWidth.coerceAtLeast(40)) ?: ""
+        "$hashShort  $dateStr  $author  $msg"
+    }
+    val commitText = commitLines.joinToString("\n")
+
+    val header = DOMNode(
+        tag = "git-header",
+        text = "origin/$branch",
+        style = StyleSet.parse("left:0; top:0; right:${safeWidth - 1}; bottom:0; fg:#ffcc66; bg:#3b2f4f")
+    )
+
+    val statusBoxHeight = (safeHeight / 3).coerceAtLeast(5)
+    val statusBox = DOMNode(
+        tag = "git-status",
+        text = statusText,
+        style = StyleSet.parse("left:0; top:1; right:${safeWidth - 1}; bottom:${statusBoxHeight}; fg:#f6f6f6; bg:#40467a")
+    )
+
+    val splitter1 = HorizontalSplitter(
+        style = StyleSet.parse("left:0; top:${statusBoxHeight + 1}; right:${safeWidth - 1}; bottom:${statusBoxHeight + 1}; fg:#ffffff; bg:#2f345a")
+    )
+
+    val messageBoxTop = statusBoxHeight + 2
+    val messageBoxHeight = 5
+    val messageLabel = DOMNode(
+        tag = "git-message-label",
+        text = "${workspaceRoot}\nMessage",
+        style = StyleSet.parse("left:0; top:${messageBoxTop}; right:${safeWidth - 1}; bottom:${messageBoxTop}; fg:#f6f6f6; bg:#2d2f55")
+    )
+
+    val messageArea = Textarea(
+        text = message,
+        style = StyleSet.parse("left:0; top:${messageBoxTop + 1}; right:${safeWidth - 1}; bottom:${messageBoxTop + messageBoxHeight}; fg:#f6f6f6; bg:#353b6f"),
+        onChange = { _, new -> setMessage(new) }
+    )
+
+    val buttonsTop = messageBoxTop + messageBoxHeight + 1
+    val buttonWidth = (safeWidth / 3).coerceAtLeast(8)
+    val commitBtn = Button(
+        text = "commit",
+        style = StyleSet.parse("left:0; top:${buttonsTop}; right:${buttonWidth - 1}; bottom:${buttonsTop}; fg:#2c2c2c; bg:#f0c030"),
+        onClick ={ onCommit(message) }
+    )
+    val tagBtn = Button(
+        text = "tag none",
+        style = StyleSet.parse("left:${buttonWidth}; top:${buttonsTop}; right:${(buttonWidth * 2) - 1}; bottom:${buttonsTop}; fg:#2c2c2c; bg:#f0c030"),
+        onClick = { onTag(message) }
+    )
+    val pushBtn = Button(
+        text = "push",
+        style = StyleSet.parse("left:${buttonWidth * 2}; top:${buttonsTop}; right:${safeWidth - 1}; bottom:${buttonsTop}; fg:#2c2c2c; bg:#f0c030"),
+        onClick = { onPush() }
+    )
+
+    val commitsTop = buttonsTop + 2
+    val commitsBox = DOMNode(
+        tag = "git-commits",
+        text = commitText,
+        style = StyleSet.parse("left:0; top:${commitsTop}; right:${safeWidth - 1}; bottom:${safeHeight - 1}; fg:#f6f6f6; bg:#2f345a")
+    )
+
+    DOMNode(
+        tag = "git-panel",
+        style = style,
+        children = listOf(
+            header,
+            statusBox,
+            splitter1,
+            messageLabel,
+            messageArea,
+            commitBtn,
+            tagBtn,
+            pushBtn,
+            commitsBox
+        )
+    )
+}
 /* =====================================================================
    APP DEMO (header + sidebar + splitter + content + status)
    Uses HookContext.useState for per-instance state.
@@ -1220,11 +1411,11 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
                                 }
                             )
                         },
-                        "Notes" to { _ ->
-                            DOMNode(
-                                tag = "notes-tab",
-                                text = "Notes\n- TODO\n- Ideas",
-                                style = StyleSet.parse("left:0; top:0; right:${tabContentWidth - 1}; bottom:${mainHeight - 1}; fg:#e0e0e0; bg:#5a669f")
+                        "Git" to { _ ->
+                            GitComponent(
+                                tree = tree,
+                                workspaceRoot = workspaceRoot,
+                                style = StyleSet.parse("left:0; top:0; right:${tabContentWidth - 1}; bottom:${mainHeight - 1}")
                             )
                         },
                         "Logs" to { _ ->

@@ -21,6 +21,10 @@ kotlin {
 }
 
 tasks.jar {
+    exclude("META-INF/*.SF")
+    exclude("META-INF/*.DSA")
+    exclude("META-INF/*.RSA")
+    exclude("META-INF/*.EC")
     // This is the "normal" jar; you can ignore it if you only use fatJar
     manifest {
         attributes["Main-Class"] = "org.github.alfu32.ktx.MainKt"
@@ -59,5 +63,14 @@ tasks.register<Jar>("fatJar") {
         runtimeClasspath
             .filter { it.name.endsWith(".jar") }
             .map { zipTree(it) }
-    })
+    }) {
+        // CRITICAL: exclude all signature-related metadata
+        exclude("META-INF/*.SF")
+        exclude("META-INF/*.RSA")
+        exclude("META-INF/*.DSA")
+        exclude("META-INF/*.EC")
+
+        // also safe to exclude unused Maven metadata
+        exclude("META-INF/*.kotlin_module")
+    }
 }
