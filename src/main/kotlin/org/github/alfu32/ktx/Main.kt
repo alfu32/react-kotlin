@@ -133,6 +133,10 @@ data class UIEvent(
     val button: Int? = null,    // mouse button
     val scrollDelta: Int? = null,
     val key: String? = null,    // keyboard key
+    val ctrl: Boolean = false,
+    val alt: Boolean = false,
+    val shift: Boolean = false,
+    val meta: Boolean = false,
     val focusId: String? = null,
     val cols: Int? = null,      // resize cols
     val rows: Int? = null       // resize rows
@@ -146,6 +150,10 @@ data class UIEvent(
             button= conf.button ?: this.button,
             scrollDelta= conf.scrollDelta ?: this.scrollDelta,
             key= conf.key ?: this.key,
+            ctrl = conf.ctrl || this.ctrl,
+            alt = conf.alt || this.alt,
+            shift = conf.shift || this.shift,
+            meta = conf.meta || this.meta,
             focusId= conf.focusId ?: this.focusId,
             cols= conf.cols ?: this.cols,
             rows= conf.rows ?: this.rows,
@@ -575,12 +583,22 @@ class AnsiCanvasRenderer(
             if (next == '['.code) {
                 return parseCsi()
             }
-            return UIEvent(kind="key_down", key="Esc")
+            // Alt-modified char: ESC + char
+            val ch = next.toChar()
+            return UIEvent(kind="key_down", key="$ch", alt = true)
         }
 
-        // Simple printable chars
+        // Control keys
+        when (firstByte) {
+            0x7F, 0x08 -> return UIEvent(kind="key_down", key="Backspace")
+            0x0D, 0x0A -> return UIEvent(kind="key_down", key="Enter")
+        }
+
+        // Simple printable/control chars (use ctrl flag for ASCII control range)
         val ch = firstByte.toChar()
-        return UIEvent(kind="key_down", key="$ch")
+        val isCtrl = firstByte in 1..26
+        val keyName = if (isCtrl) ch.plus(64).toChar().toString() else "$ch"
+        return UIEvent(kind="key_down", key=keyName, ctrl = isCtrl)
     }
 
     private fun parseCsi(): UIEvent? {
@@ -591,6 +609,20 @@ class AnsiCanvasRenderer(
             if ((c in 'A'..'Z') || (c in 'a'..'z')) break
         }
         val s = seq.toString()
+        val finalChar = s.lastOrNull() ?: return null
+        val body = s.dropLast(1)
+        val params = if (body.isEmpty()) emptyList() else body.split(';')
+
+        data class Mods(val shift: Boolean, val alt: Boolean, val ctrl: Boolean, val meta: Boolean)
+        fun decodeMods(modParam: Int): Mods {
+            // xterm modifier encoding: mod = 1 + (shift?1) + (alt?2) + (ctrl?4) + (meta?8)
+            val bits = (modParam - 1).coerceAtLeast(0)
+            val shift = (bits and 1) != 0
+            val alt = (bits and 2) != 0
+            val ctrl = (bits and 4) != 0
+            val meta = (bits and 8) != 0
+            return Mods(shift, alt, ctrl, meta)
+        }
 
         // Mouse SGR: <btn;x;yM or <btn;x;ym
         if ((s.endsWith("M") || s.endsWith("m")) && s.startsWith("<")) {
@@ -604,9 +636,13 @@ class AnsiCanvasRenderer(
                 val baseBtn = btnCode and 0b11
                 val scroll = btnCode and 0b111
 
+                val shift = (btnCode and 4) != 0
+                val alt = (btnCode and 8) != 0
+                val ctrl = (btnCode and 16) != 0
+
                 // Scroll wheel
-                if (scroll == 64) return UIEvent("mouse_scroll", x = x, y = y, scrollDelta = 1)
-                if (scroll == 65) return UIEvent("mouse_scroll", x = x, y = y, scrollDelta = -1)
+                if (scroll == 64) return UIEvent("mouse_scroll", x = x, y = y, scrollDelta = 1, ctrl = ctrl, alt = alt, shift = shift)
+                if (scroll == 65) return UIEvent("mouse_scroll", x = x, y = y, scrollDelta = -1, ctrl = ctrl, alt = alt, shift = shift)
 
                 val button = when (baseBtn) {
                     0 -> 0
@@ -620,16 +656,34 @@ class AnsiCanvasRenderer(
                     press -> "mouse_down"
                     else -> "mouse_up"
                 }
-                return UIEvent(kind, x = x, y = y, button = button)
+                return UIEvent(kind, x = x, y = y, button = button, ctrl = ctrl, alt = alt, shift = shift)
             }
         }
 
-        // Arrow keys
-        return when (s) {
-            "A" -> UIEvent("key_down", key="Up")
-            "B" -> UIEvent("key_down", key="Down")
-            "C" -> UIEvent("key_down", key="Right")
-            "D" -> UIEvent("key_down", key="Left")
+        // Keys / navigation with optional modifiers (CSI 1;5A, etc.)
+        val mods = if (params.size >= 2) {
+            decodeMods(params.last().toIntOrNull() ?: 1)
+        } else Mods(false, false, false, false)
+
+        return when (finalChar) {
+            'A' -> UIEvent("key_down", key="Up", shift = mods.shift, alt = mods.alt, ctrl = mods.ctrl, meta = mods.meta)
+            'B' -> UIEvent("key_down", key="Down", shift = mods.shift, alt = mods.alt, ctrl = mods.ctrl, meta = mods.meta)
+            'C' -> UIEvent("key_down", key="Right", shift = mods.shift, alt = mods.alt, ctrl = mods.ctrl, meta = mods.meta)
+            'D' -> UIEvent("key_down", key="Left", shift = mods.shift, alt = mods.alt, ctrl = mods.ctrl, meta = mods.meta)
+            'H' -> UIEvent("key_down", key="Home", shift = mods.shift, alt = mods.alt, ctrl = mods.ctrl, meta = mods.meta)
+            'F' -> UIEvent("key_down", key="End", shift = mods.shift, alt = mods.alt, ctrl = mods.ctrl, meta = mods.meta)
+            '~' -> {
+                val code = params.firstOrNull()?.toIntOrNull()
+                when (code) {
+                    1, 7 -> UIEvent("key_down", key="Home", shift = mods.shift, alt = mods.alt, ctrl = mods.ctrl, meta = mods.meta)
+                    4, 8 -> UIEvent("key_down", key="End", shift = mods.shift, alt = mods.alt, ctrl = mods.ctrl, meta = mods.meta)
+                    2 -> UIEvent("key_down", key="Insert", shift = mods.shift, alt = mods.alt, ctrl = mods.ctrl, meta = mods.meta)
+                    3 -> UIEvent("key_down", key="Delete", shift = mods.shift, alt = mods.alt, ctrl = mods.ctrl, meta = mods.meta)
+                    5 -> UIEvent("key_down", key="PageUp", shift = mods.shift, alt = mods.alt, ctrl = mods.ctrl, meta = mods.meta)
+                    6 -> UIEvent("key_down", key="PageDown", shift = mods.shift, alt = mods.alt, ctrl = mods.ctrl, meta = mods.meta)
+                    else -> null
+                }
+            }
             else -> null
         }
     }
@@ -879,32 +933,77 @@ fun HorizontalSplitter(
 private fun renderBuffer(buffer: ITextBuffer, width: Int, height: Int, startLine: Int = 0): String {
     val slice = buffer.viewportSlice(EditorViewport(0, startLine, width, height), gutterWidth = 0)
     return slice.lines.joinToString("\n") { line ->
-        line.segments.joinToString("") { it.text }
+        // Represent selection by inverted markup markers; rendering engine ignores them,
+        // but we can use placeholders to hint selection (e.g., wrap in special chars).
+        buildString {
+            for (seg in line.segments) {
+                if (seg.selected) {
+                    append('\u001b').append("[7m") // inverse on
+                    append(seg.text.ifEmpty { " " })
+                    append('\u001b').append("[0m") // reset
+                } else {
+                    append(seg.text)
+                }
+            }
+        }
     }
 }
 
-private fun handleKeyForBuffer(buffer: ITextBuffer, key: String?, singleLine: Boolean = false): Boolean {
-    if (key == null) return false
+private fun handleKeyForBuffer(buffer: ITextBuffer, ev: UIEvent, singleLine: Boolean = false): Boolean {
+    val key = ev.key ?: return false
+    val ctrl = ev.ctrl
+    val shift = ev.shift
     val before = buffer.text()
+
     when (key) {
-        "Backspace" -> buffer.deleteBackspace()
+        "Backspace" -> {
+            buffer.deleteBackspace()
+        }
+        "Delete" -> {
+            buffer.deleteForward()
+        }
         "Enter" -> if (!singleLine) buffer.insertNewline()
-        "Left" -> buffer.moveLeft()
-        "Right" -> buffer.moveRight()
-        "Up" -> buffer.moveUp()
-        "Down" -> buffer.moveDown()
-        "Home" -> buffer.moveStartOfLine()
-        "End" -> buffer.moveEndOfLine()
-        else -> if (key.length == 1) buffer.insertText(key)
+        "Left" -> buffer.moveLeft(expand = shift, word = ctrl)
+        "Right" -> buffer.moveRight(expand = shift, word = ctrl)
+        "Up" -> buffer.moveUp(expand = shift)
+        "Down" -> buffer.moveDown(expand = shift)
+        "Home" -> buffer.moveStartOfLine(expand = shift)
+        "End" -> buffer.moveEndOfLine(expand = shift)
+        else -> {
+            if (ctrl) {
+                when (key.lowercase()) {
+                    "c" -> buffer.copySelection()
+                    "x" -> if (buffer.cutSelection()) {}
+                    "v" -> buffer.pasteClipboard()
+                    "a" -> buffer.selectAll()
+                    "s" -> {} // placeholder for save hook
+                }
+            } else if (!ev.alt && key.length == 1) {
+                buffer.insertText(key)
+            }
+        }
     }
     return buffer.text() != before
 }
 
-private fun handleMouseToBuffer(buffer: ITextBuffer, ev: UIEvent, singleLine: Boolean = false, scrollOffset: Int = 0) {
+private fun handleMouseToBuffer(
+    buffer: ITextBuffer,
+    ev: UIEvent,
+    singleLine: Boolean = false,
+    scrollOffset: Int = 0,
+    startSelection: Boolean = false,
+    extendSelection: Boolean = false
+) {
     val line = (ev.relY ?: 0).coerceAtLeast(0) + scrollOffset
-    val col = (ev.relX ?: 0).coerceAtLeast(0)
+    val col = ((ev.relX ?: 0) - 1).coerceAtLeast(0)
     val targetLine = if (singleLine) 0 else line
-    buffer.moveCursorTo(Position(targetLine, col), expand = false)
+    val pos = Position(targetLine, col)
+    if (startSelection) {
+        buffer.startSelection(pos)
+    } else if (extendSelection) {
+        buffer.selectTo(pos)
+    }
+    buffer.moveCursorTo(pos, expand = extendSelection)
 }
 
 fun Textarea(
@@ -942,21 +1041,22 @@ fun Textarea(
         style = StyleSet.parse("left:0; top:0; right:${contentWidth - 1}; bottom:${viewportHeight - 1}"),
         id = "textarea-content",
         onMouseDown = { ev ->
-            handleMouseToBuffer(buffer, ev, singleLine = false, scrollOffset = clampedOffset)
+            handleMouseToBuffer(buffer, ev, singleLine = false, scrollOffset = clampedOffset, startSelection = true)
             onMouseDown?.invoke(ev)
         },
         onMouseUp = onMouseUp,
         onMouseMove = { ev ->
-            handleMouseToBuffer(buffer, ev, singleLine = false, scrollOffset = clampedOffset)
-            onMouseMove?.invoke(ev)
+            if (ev.button != null) {
+                handleMouseToBuffer(buffer, ev, singleLine = false, scrollOffset = clampedOffset, extendSelection = true)
+                onMouseMove?.invoke(ev)
+            }
         },
         onKeyDown = { ev ->
-            if (handleKeyForBuffer(buffer, ev.key, singleLine = false)) onChange(buffer)
+            if (handleKeyForBuffer(buffer, ev, singleLine = false)) onChange(buffer)
         },
         onKeyUp = onKeyUp,
     )
-
-    val scrollbar = VerticalScrollBar(
+val scrollbar = VerticalScrollBar(
         tree = tree,
         style = StyleSet.parse("left:${contentWidth}; top:0; right:${contentWidth + scrollbarWidth - 1}; bottom:${viewportHeight - 1}"),
         contentHeight = totalLines.coerceAtLeast(viewportHeight),
@@ -1009,7 +1109,7 @@ fun InputText(
             onMouseMove?.invoke(ev)
         },
         onKeyDown = { ev ->
-            if (handleKeyForBuffer(buffer, ev.key, singleLine = true)) onChange(buffer)
+            if (handleKeyForBuffer(buffer, ev, singleLine = true)) onChange(buffer)
         },
         onKeyUp = onKeyUp,
         key = key
@@ -1040,11 +1140,38 @@ fun EditorView(
         gutterWidth = gutterWidth
     )
     val rendered = slice.lines.joinToString("\n") { line ->
-        val base = buildString {
+        buildString {
             append(line.gutter)
             line.segments.forEach { append(it.text) }
         }
-        base
+    }
+
+    // Selection overlays (background only)
+    val selectionNodes = mutableListOf<DOMNode>()
+    slice.lines.forEachIndexed { idx, line ->
+        var x = 0
+        line.segments.forEach { seg ->
+            val len = seg.text.length
+            if (seg.selected && len > 0) {
+                val left = gutterWidth + x
+                val right = gutterWidth + x + len - 1
+                selectionNodes.add(
+                    DOMNode(
+                        tag = "editor-selection",
+                        text = " ".repeat(len),
+                        style = StyleSet(
+                            left = left,
+                            top = idx,
+                            right = right,
+                            bottom = idx,
+                            fg = style.bg ?: Color(0, 0, 0),
+                            bg = style.fg ?: Color(255, 255, 255)
+                        )
+                    )
+                )
+            }
+            x += len
+        }
     }
 
     val contentNode = DOMNode(
@@ -1053,17 +1180,34 @@ fun EditorView(
         style = StyleSet.parse("left:0; top:0; right:${gutterWidth + contentWidth - 1}; bottom:${viewportHeight - 1}"),
         id = "editor-content",
         onKeyDown = { ev ->
-            if (handleKeyForBuffer(buffer, ev.key, singleLine = false)) onChange(buffer)
+            if (handleKeyForBuffer(buffer, ev, singleLine = false)) onChange(buffer)
         },
         onMouseDown = { ev ->
             val adj = ev.alterCopy(UIEvent(kind = ev.kind, relX = (ev.relX ?: 0) - gutterWidth, relY = ev.relY))
             handleMouseToBuffer(buffer, adj, singleLine = false, scrollOffset = clampedOffset)
         },
         onMouseMove = { ev ->
-            val adj = ev.alterCopy(UIEvent(kind = ev.kind, relX = (ev.relX ?: 0) - gutterWidth, relY = ev.relY))
-            handleMouseToBuffer(buffer, adj, singleLine = false, scrollOffset = clampedOffset)
+            // Only update cursor on hover if a button is pressed (drag); otherwise leave caret
+            if (ev.button != null) {
+                val adj = ev.alterCopy(UIEvent(kind = ev.kind, relX = (ev.relX ?: 0) - gutterWidth, relY = ev.relY))
+                handleMouseToBuffer(buffer, adj, singleLine = false, scrollOffset = clampedOffset)
+            }
         }
     )
+
+    val cursorNode = slice.cursor?.let { c ->
+        val cx = gutterWidth + c.column + 1
+        val cy = c.line
+        val ch = c.char.firstOrNull()?.let { if (it.isWhitespace()) '_' else it } ?: '_'
+        val fg = style.bg ?: Color(0, 0, 0)
+        val bg = style.fg ?: Color(255, 255, 255)
+        DOMNode(
+            tag = "editor-cursor",
+            text = "$ch",
+            style = StyleSet(left = cx, top = cy, right = cx, bottom = cy, fg = fg, bg = bg),
+            id = "editor-cursor"
+        )
+    }
 
     val scrollbar = VerticalScrollBar(
         tree = tree,
@@ -1073,11 +1217,13 @@ fun EditorView(
         onScrollTo = { off -> setScrollOffset(off.coerceIn(0, maxOffset)) }
     )
 
+    val children = listOfNotNull(contentNode, cursorNode) + selectionNodes + listOf(scrollbar)
+
     DOMNode(
         tag = "editor",
         style = style,
         id = "editor",
-        children = listOf(contentNode, scrollbar)
+        children = children
     )
 }
 
@@ -1856,12 +2002,6 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             },
             onMouseUp = { ev ->
                 setDragging(false)
-                // if (dragging) {
-                //     val mx = ev.x ?: return@DOMNode
-                //     val dx = mx - dragStartX
-                //     setSplitterPos((dragStartSplit + dx).coerceIn(minPanelWidth, maxPanelWidth))
-                //     setStatus("Splitter release ${mx},${ev.y}")
-                // }
             }
         )
 
