@@ -170,15 +170,15 @@ data class StyleSet(
     var lineSet: String? = null
 ) {
     fun mergeFrom(src: StyleSet) {
-        if (top == null) top = src.top
-        if (left == null) left = src.left
-        if (bottom == null) bottom = src.bottom
-        if (right == null) right = src.right
-        if (bg == null) bg = src.bg
-        if (fg == null) fg = src.fg
-        if (textDecoration == null) textDecoration = src.textDecoration
-        if (borderSet == null) borderSet = src.borderSet
-        if (lineSet == null) lineSet = src.lineSet
+        if (src.top != null) top = src.top
+        if (src.left != null) left = src.left
+        if (src.bottom != null) bottom = src.bottom
+        if (src.right != null) right = src.right
+        if (src.bg != null) bg = src.bg
+        if (src.fg != null) fg = src.fg
+        if (src.textDecoration != null) textDecoration = src.textDecoration
+        if (src.borderSet != null) borderSet = src.borderSet
+        if (src.lineSet != null) lineSet = src.lineSet
     }
 
     fun merged(src: StyleSet): StyleSet =
@@ -226,7 +226,7 @@ data class StyleSet(
 
 class StyleSheet(
     val defaultStyle: StyleSet = StyleSet(),
-    private val rules: Map<String, StyleSet> = emptyMap()
+    val rules: Map<String, StyleSet> = emptyMap()
 ) {
 
     fun getStyle(styleId: String): StyleSet {
@@ -250,6 +250,26 @@ class StyleSheet(
     }
 
     companion object {
+        fun loadFromFiles(files: List<String>): StyleSheet {
+            val aggregateDefault = StyleSet()
+            val aggregateRules = mutableMapOf<String, StyleSet>()
+
+            for (path in files) {
+                val css = try {
+                    File(path).takeIf { it.exists() }?.readText()
+                } catch (_: Exception) { null } ?: continue
+
+                val sheet = parse(css)
+                aggregateDefault.mergeFrom(sheet.defaultStyle)
+                for ((k, v) in sheet.rules) {
+                    val target = aggregateRules.getOrPut(k) { StyleSet() }
+                    target.mergeFrom(v)
+                }
+            }
+
+            return StyleSheet(aggregateDefault, aggregateRules)
+        }
+
         fun parse(css: String): StyleSheet {
             val defaultStyle = StyleSet()
             val rules = mutableMapOf<String, StyleSet>()
@@ -274,7 +294,8 @@ class StyleSheet(
 
                     if (segments.isNotEmpty()) {
                         val key = segments.joinToString(".")
-                        rules[key] = style
+                        val existing = rules.getOrPut(key) { StyleSet() }
+                        existing.mergeFrom(style)
                     }
                 }
             }
@@ -285,6 +306,16 @@ class StyleSheet(
         private fun splitPathKey(key: String): List<String> =
             if (key.isBlank()) emptyList() else key.split('.')
     }
+}
+
+private fun applyStyles(dom: DOMNode, sheet: StyleSheet?): DOMNode {
+    val resolvedStyle = StyleSet()
+    if (sheet != null && dom.id != null) {
+        resolvedStyle.mergeFrom(sheet.getStyle(dom.id))
+    }
+    resolvedStyle.mergeFrom(dom.style)
+    val styledChildren = dom.children.map { applyStyles(it, sheet) }
+    return dom.copy(style = resolvedStyle, children = styledChildren)
 }
 
 /* =====================================================================
@@ -1628,11 +1659,13 @@ private fun restoreStty(state: String?) {
 fun runApp(
     renderer: CanvasRenderer,
     maxFrames: ULong? = null,
+    styleFiles: List<String> = emptyList(),
     rootFn: (ComponentTreeManager) -> DOMNode
 ) : AppContext {
     val appContext: AppContext = AppContext()
     val tree = ComponentTreeManager()
     var lastDom: DOMNode = DOMNode("empty")
+    val styleSheet = StyleSheet.loadFromFiles(styleFiles)
 
     // Try to enter raw mode for ANSI terminals so key/mouse events work and echo is off.
     val savedStty = if (renderer is AnsiCanvasRenderer) enterRawMode() else null
@@ -1650,7 +1683,8 @@ fun runApp(
 
             // Render frame
             tree.beginFrame()
-            val root = rootFn(tree)
+            val rawRoot = rootFn(tree)
+            val root = applyStyles(rawRoot, styleSheet)
             tree.endFrame()
             lastDom = root
 
@@ -1715,6 +1749,7 @@ fun main() {
     runApp(
         renderer = renderer,
         maxFrames = maxFrames?.toULong(),
+        styleFiles = listOf("styles/app.css"),
     ) { tree: ComponentTreeManager ->
         App(tree, renderer.cols(), renderer.rows())
     }.apply {
