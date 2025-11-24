@@ -918,7 +918,7 @@ fun VerticalScrollBar(
 
     val indicator = DOMNode(
         tag = "scrollbar-indicator",
-        style = StyleSet.parse("left:0; top:${indicatorTop}; right:0; bottom:${indicatorTop + indicatorHeight - 1}; bg:#e6c850; fg:#1e1e1e"),
+        style = StyleSet.parse("left:0; top:${indicatorTop}; right:0; bottom:${indicatorTop + indicatorHeight - 1}"),
         onMouseDown = { ev ->
             val y = ev.relY ?: 0
             setDragging(true)
@@ -937,7 +937,7 @@ fun VerticalScrollBar(
 
     val track = DOMNode(
         tag = "scrollbar-track",
-        style = StyleSet.parse("left:0; top:0; right:0; bottom:${vh - 1}; bg:#2f2f2f; fg:#d8d8d8"),
+        style = StyleSet.parse("left:0; top:0; right:0; bottom:${vh - 1}"),
         children = listOf(indicator),
         onMouseDown = { ev ->
             val y = ev.relY ?: 0
@@ -1217,7 +1217,7 @@ fun VerticalTabsHost(
             tag = "tab-button",
             id = "tab-${entry.key}",
             text = makeLabel(entry.key),
-            style = StyleSet.parse("left:0; top:${top}; right:${stripeWidth - 1}; bottom:${bottom}; fg:${"#%02x%02x%02x".format(fg.r, fg.g, fg.b)}; bg:${"#%02x%02x%02x".format(bg.r, bg.g, bg.b)}"),
+            style = StyleSet.parse("left:0; top:${top}; right:${stripeWidth - 1}; bottom:${bottom}"),
             onMouseDown = {
                 if (activeTab != entry.key) {
                     setActiveTab(entry.key)
@@ -1234,15 +1234,15 @@ fun VerticalTabsHost(
         tag = "vertical-tabs-host",
         style = style,
         children = listOfNotNull(
-            DOMNode(
-                tag = "tab-strip",
-                style = StyleSet.parse("left:0; top:0; right:${stripeWidth - 1}; bottom:${(hostHeight - 1).coerceAtLeast(0)}; bg:#323768; fg:#c8c8d2"),
+                DOMNode(
+                    tag = "tab-strip",
+                    style = StyleSet.parse("left:0; top:0; right:${stripeWidth - 1}; bottom:${(hostHeight - 1).coerceAtLeast(0)}"),
                 children = buttons
             ),
             content?.let {
                 DOMNode(
                     tag = "tab-content-area",
-                    style = StyleSet.parse("left:${stripeWidth}; top:0; right:${stripeWidth + contentWidth - 1}; bottom:${(hostHeight - 1).coerceAtLeast(0)}; bg:#505a96; fg:#d2d6dc"),
+                    style = StyleSet.parse("left:${stripeWidth}; top:0; right:${stripeWidth + contentWidth - 1}; bottom:${(hostHeight - 1).coerceAtLeast(0)}"),
                     children = listOf(it)
                 )
             }
@@ -1281,7 +1281,7 @@ fun FileTreeComponent(
             tag = "${tag}::entry",
             id = entry.fullPath,
             text = text,
-            style = StyleSet.parse("left:0;top:${idx};right:${safeWidth - 1};bottom:${idx};fg:${fg};bg:${bg};"),
+            style = StyleSet.parse("left:0;top:${idx};right:${safeWidth - 1};bottom:${idx}"),
             onMouseDown = { event: UIEvent ->
                 if (entry.typ == "folder") {
                     val openerColumn = run {
@@ -1311,7 +1311,7 @@ fun FileTreeComponent(
 
     DOMNode(
         tag = tag,
-        style = StyleSet.parse("left:0;top:0;right:${safeWidth - 1};bottom:${safeHeight - 1};bg:#46DC82;fg:#DCDCE6"),
+        style = StyleSet.parse("left:0;top:0;right:${safeWidth - 1};bottom:${safeHeight - 1}"),
         children = lines
     )
 }
@@ -1356,18 +1356,18 @@ fun GitComponent(
     val header = DOMNode(
         tag = "git-header",
         text = "origin/$branch",
-        style = StyleSet.parse("left:0; top:0; right:${safeWidth - 1}; bottom:0; fg:#ffcc66; bg:#3b2f4f")
+        style = StyleSet.parse("left:0; top:0; right:${safeWidth - 1}; bottom:0")
     )
 
     val statusBoxHeight = (safeHeight / 3).coerceAtLeast(5)
     val statusBox = DOMNode(
         tag = "git-status",
         text = statusText,
-        style = StyleSet.parse("left:0; top:1; right:${safeWidth - 1}; bottom:${statusBoxHeight}; fg:#f6f6f6; bg:#40467a")
+        style = StyleSet.parse("left:0; top:1; right:${safeWidth - 1}; bottom:${statusBoxHeight}")
     )
 
     val splitter1 = HorizontalSplitter(
-        style = StyleSet.parse("left:0; top:${statusBoxHeight + 1}; right:${safeWidth - 1}; bottom:${statusBoxHeight + 1}; fg:#ffffff; bg:#2f345a")
+        style = StyleSet.parse("left:0; top:${statusBoxHeight + 1}; right:${safeWidth - 1}; bottom:${statusBoxHeight + 1}")
     )
 
     val messageBoxTop = statusBoxHeight + 2
@@ -1375,12 +1375,12 @@ fun GitComponent(
     val messageLabel = DOMNode(
         tag = "git-message-label",
         text = "${workspaceRoot}\nMessage",
-        style = StyleSet.parse("left:0; top:${messageBoxTop}; right:${safeWidth - 1}; bottom:${messageBoxTop}; fg:#f6f6f6; bg:#2d2f55")
+        style = StyleSet.parse("left:0; top:${messageBoxTop}; right:${safeWidth - 1}; bottom:${messageBoxTop}")
     )
 
     val messageArea = Textarea(
         text = message,
-        style = StyleSet.parse("left:0; top:${messageBoxTop + 1}; right:${safeWidth - 1}; bottom:${messageBoxTop + messageBoxHeight}; fg:#f6f6f6; bg:#353b6f"),
+        style = StyleSet.parse("left:0; top:${messageBoxTop + 1}; right:${safeWidth - 1}; bottom:${messageBoxTop + messageBoxHeight}"),
         onChange = { _, new -> setMessage(new) }
     )
 
@@ -1388,17 +1388,17 @@ fun GitComponent(
     val buttonWidth = (safeWidth / 3).coerceAtLeast(8)
     val commitBtn = Button(
         text = "commit",
-        style = StyleSet.parse("left:0; top:${buttonsTop}; right:${buttonWidth - 1}; bottom:${buttonsTop}; fg:#2c2c2c; bg:#f0c030"),
+        style = StyleSet.parse("left:0; top:${buttonsTop}; right:${buttonWidth - 1}; bottom:${buttonsTop}"),
         onClick ={ onCommit(message) }
     )
     val tagBtn = Button(
         text = "tag none",
-        style = StyleSet.parse("left:${buttonWidth}; top:${buttonsTop}; right:${(buttonWidth * 2) - 1}; bottom:${buttonsTop}; fg:#2c2c2c; bg:#f0c030"),
+        style = StyleSet.parse("left:${buttonWidth}; top:${buttonsTop}; right:${(buttonWidth * 2) - 1}; bottom:${buttonsTop}"),
         onClick = { onTag(message) }
     )
     val pushBtn = Button(
         text = "push",
-        style = StyleSet.parse("left:${buttonWidth * 2}; top:${buttonsTop}; right:${safeWidth - 1}; bottom:${buttonsTop}; fg:#2c2c2c; bg:#f0c030"),
+        style = StyleSet.parse("left:${buttonWidth * 2}; top:${buttonsTop}; right:${safeWidth - 1}; bottom:${buttonsTop}"),
         onClick = { onPush() }
     )
 
@@ -1410,11 +1410,11 @@ fun GitComponent(
     val commitTextBox = DOMNode(
         tag = "git-commits",
         text = commitText,
-        style = StyleSet.parse("left:0; top:${commitsTop}; right:${safeWidth - 3}; bottom:${safeHeight - 1}; fg:#f6f6f6; bg:#2f345a")
+        style = StyleSet.parse("left:0; top:${commitsTop}; right:${safeWidth - 3}; bottom:${safeHeight - 1}")
     )
     val commitScrollbar = VerticalScrollBar(
         tree = tree,
-        style = StyleSet.parse("left:${safeWidth - 2}; top:${commitsTop}; right:${safeWidth - 1}; bottom:${safeHeight - 1}; bg:#2f2f2f"),
+        style = StyleSet.parse("left:${safeWidth - 2}; top:${commitsTop}; right:${safeWidth - 1}; bottom:${safeHeight - 1}"),
         contentHeight = commitLines.size.coerceAtLeast(commitViewportHeight),
         scrollOffset = clampedCommitScroll,
         onScrollTo = { newOffset -> setCommitScroll(newOffset.coerceIn(0, maxCommitOffset)) }
@@ -1466,7 +1466,7 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             tag = "header",
             id = "header",
             text = " Kotlin TUI Demo (q=quit) ",
-            style = StyleSet.parse("left:0; top:0; right:${cols - 1}; bottom:0; fg:#bebebb; bg:#223388"),
+            style = StyleSet.parse("left:0; top:0; right:${cols - 1}; bottom:0"),
             onMouseMove = {ev ->
                 setStatus("$statText,header,hover,x${ev.x},y${ev.y}")
             }
@@ -1475,7 +1475,7 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
         val sidebar = DOMNode(
             tag = "div",
             id = "sidebar",
-            style = StyleSet.parse("left:0; top:0; right:${clampedSplit - 1}; bottom:${mainHeight - 1}; fg:#bebebb; bg:#636fab"),
+            style = StyleSet.parse("left:0; top:0; right:${clampedSplit - 1}; bottom:${mainHeight - 1}"),
             children = listOf(
                 VerticalTabsHost(
                     tree = tree,
@@ -1508,7 +1508,7 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
                             DOMNode(
                                 tag = "logs-tab",
                                 text = "Logs\n[recent events]",
-                                style = StyleSet.parse("left:0; top:0; right:${tabContentWidth - 1}; bottom:${mainHeight - 1}; fg:#e0e0e0; bg:#4f5c8e")
+                                style = StyleSet.parse("left:0; top:0; right:${tabContentWidth - 1}; bottom:${mainHeight - 1}")
                             )
                         }
                     ),
@@ -1522,7 +1522,7 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             tag = "div",
             id = "splitter",
             text = "│\n".repeat(mainHeight-1),
-            style = StyleSet.parse("left:${clampedSplit - 1}; top:0; right:${clampedSplit}; bottom:${mainHeight - 1}; fg:#bebebb; bg:#808080"),
+            style = StyleSet.parse("left:${clampedSplit - 1}; top:0; right:${clampedSplit}; bottom:${mainHeight - 1}"),
             onMouseDown = { ev ->
                 val mx = ev.x ?: return@DOMNode
                 setDragging(true)
@@ -1536,7 +1536,7 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             tag = "div",
             id = "content",
             text = "Editor\n[placeholder]",
-            style = StyleSet.parse("left:${clampedSplit}; top:0; right:${cols - 1}; bottom:${mainHeight - 1}; fg:#bebebb; bg:#182460"),
+            style = StyleSet.parse("left:${clampedSplit}; top:0; right:${cols - 1}; bottom:${mainHeight - 1}"),
             onMouseMove = {ev ->
                 setStatus("$statText,content,hover,x${ev.x},y${ev.y}")
             }
@@ -1546,7 +1546,7 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             tag = "footer",
             id = "status",
             text = "$status | split=$clampedSplit drag=$dragging",
-            style = StyleSet.parse("left:0; top:${rows - 1}; right:${cols - 1}; bottom:${rows - 1}; fg:#bebebb; bg:#4d4d4d"),
+            style = StyleSet.parse("left:0; top:${rows - 1}; right:${cols - 1}; bottom:${rows - 1}"),
             onMouseMove = {ev ->
                 setStatus("$statText,footer,hover,x${ev.x},y${ev.y}")
             }

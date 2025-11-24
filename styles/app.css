@@ -42,10 +42,6 @@ vertical-tabs-host {
     bg: #2d325f;
     fg: #d4d7ea;
 }
-vertical-tabs-host {
-    bg: #2d325f;
-    fg: #d4d7ea;
-}
 
 tab-strip {
     bg: #323768;
@@ -53,10 +49,6 @@ tab-strip {
 }
 
 tab-button {
-    bg: #4c527e;
-    fg: #f0f0ff;
-}
-tab-button:focus {
     bg: #4c527e;
     fg: #f0f0ff;
 }
@@ -77,10 +69,6 @@ logs-tab {
 }
 
 file-entry {
-    bg: #3c4678;
-    fg: #e0e0e6;
-}
-file-entry:focus {
     bg: #3c4678;
     fg: #e0e0e6;
 }
