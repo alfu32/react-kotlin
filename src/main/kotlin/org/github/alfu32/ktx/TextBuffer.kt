@@ -87,6 +87,8 @@ class TextBuffer : ITextBuffer {
     private var anchor: Position? = null
     private var clipboard: String = ""
     private val notifications = mutableListOf<Notification>()
+    private var bufferBom: String = ""
+    private var bufferEncoding: String = "UTF-8"
 
 
     /*  
@@ -96,6 +98,19 @@ class TextBuffer : ITextBuffer {
     */
 
     override fun text(): String = lines.joinToString("\n")
+
+    override fun cursorPosition(): Position = Position(cursor.line, cursor.column)
+
+    override fun selectionText(): String {
+        val r = selectionRange() ?: return ""
+        return extractText(r)
+    }
+
+    override fun totalLines(): Int = lines.size
+
+    override fun bom(): String = bufferBom
+
+    override fun encoding(): String = bufferEncoding
 
     override fun clone(): ITextBuffer {
         val b = TextBuffer()

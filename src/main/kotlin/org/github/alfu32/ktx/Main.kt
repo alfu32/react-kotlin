@@ -57,6 +57,12 @@ interface ITextBuffer {
     fun text(): String
     fun clone(): ITextBuffer
 
+    fun cursorPosition(): Position
+    fun selectionText(): String
+    fun totalLines(): Int
+    fun bom(): String
+    fun encoding(): String
+
     fun loadText(text: String)
 
     fun moveCursorTo(position: Position, expand: Boolean)
@@ -106,6 +112,17 @@ data class CursorView(val line: Int, val column: Int, val char: String)
 
 data class ViewportSlice(val lines: List<ViewLine>, val totalLines: Int, val cursor: CursorView?)
 
+data class EditorState(
+    val filePath: String,
+    val language: String,
+    val cursorLine: Int,
+    val cursorColumn: Int,
+    val selection: String,
+    val totalLines: Int,
+    val bom: String,
+    val encoding: String
+)
+
 /*
 ===============================================================
   DATA TYPES
@@ -139,7 +156,8 @@ data class UIEvent(
     val meta: Boolean = false,
     val focusId: String? = null,
     val cols: Int? = null,      // resize cols
-    val rows: Int? = null       // resize rows
+    val rows: Int? = null,       // resize rows
+    val raw: String = ""       // resize rows
 ){
     fun alterCopy(conf:UIEvent)= UIEvent(
             kind= this.kind,
@@ -1035,6 +1053,10 @@ fun Textarea(
 
     val rendered = renderBuffer(buffer, contentWidth, viewportHeight, clampedOffset)
 
+    val slice = buffer.viewportSlice(
+        EditorViewport(0, clampedOffset, contentWidth, viewportHeight),
+        gutterWidth = 0
+    )
     val contentNode = DOMNode(
         tag = "textarea-content",
         text = rendered,
@@ -1058,11 +1080,31 @@ fun Textarea(
     )
 val scrollbar = VerticalScrollBar(
         tree = tree,
-        style = StyleSet.parse("left:${contentWidth}; top:0; right:${contentWidth + scrollbarWidth - 1}; bottom:${viewportHeight - 1}"),
+        style = StyleSet.parse("left:${contentWidth+1}; top:0; right:${contentWidth + scrollbarWidth}; bottom:${viewportHeight - 1}"),
         contentHeight = totalLines.coerceAtLeast(viewportHeight),
         scrollOffset = clampedOffset,
         onScrollTo = { off -> setScrollOffset(off.coerceIn(0, maxOffset)) }
     )
+
+    val cursorFg = style.bg ?: Color(0, 0, 0)
+    val cursorBg = style.fg ?: Color(200, 200, 200)
+    val cursorNode = slice.cursor?.let { c ->
+        val cx = c.column
+        val cy = c.line
+        val ch = c.char.firstOrNull()?.let { if (it.isWhitespace()) '_' else it } ?: '_'
+        DOMNode(
+            tag = "editor-cursor",
+            text = "$ch",
+            style = StyleSet(left = cx, top = cy, right = cx, bottom = cy, fg = cursorFg, bg = cursorBg),
+            id = "editor-cursor"
+        )
+    }
+    val alternateCursorNode = DOMNode(
+            tag = "editor-cursor",
+            text = "_",
+            style = StyleSet(left = 0, top = 0, right = 0, bottom = 0, fg = cursorFg, bg = cursorBg),
+            id = "editor-cursor"
+        )
 
     // Apply viewport offset by adjusting buffer? simplest: re-render buffer with slice starting at offset
     val slicedRendered = renderBuffer(buffer, contentWidth, viewportHeight, clampedOffset)
@@ -1075,7 +1117,7 @@ val scrollbar = VerticalScrollBar(
             text = null,
             style = style,
             id = "textarea",
-            children = listOf(content, scrollbar)
+            children = listOf(content, cursorNode?:alternateCursorNode, scrollbar)
         )
     }
 }
@@ -1120,7 +1162,10 @@ fun EditorView(
     tree: ComponentTreeManager,
     buffer: ITextBuffer,
     style: StyleSet,
+    filePath: String,
+    language: String,
     onChange: (ITextBuffer) -> Unit = {},
+    onStateChange: (EditorState) -> Unit = {},
     key: String? = null
 ): DOMNode = renderComponent(tree, key) {
     val totalWidth = ((style.right ?: 0) - (style.left ?: 0) + 1).coerceAtLeast(10)
@@ -1153,19 +1198,19 @@ fun EditorView(
         line.segments.forEach { seg ->
             val len = seg.text.length
             if (seg.selected && len > 0) {
-                val left = gutterWidth + x
-                val right = gutterWidth + x + len - 1
+                val left = gutterWidth + 1 + x  // align with caret offset
+                val right = gutterWidth + 1 + x + len - 1
                 selectionNodes.add(
                     DOMNode(
                         tag = "editor-selection",
-                        text = " ".repeat(len),
+                        text = seg.text,
                         style = StyleSet(
                             left = left,
                             top = idx,
                             right = right,
                             bottom = idx,
-                            fg = style.bg ?: Color(0, 0, 0),
-                            bg = style.fg ?: Color(255, 255, 255)
+                            fg = style.fg?:Color(220, 220, 100),
+                            bg = style.bg?:Color(34, 60, 97)
                         )
                     )
                 )
@@ -1184,13 +1229,12 @@ fun EditorView(
         },
         onMouseDown = { ev ->
             val adj = ev.alterCopy(UIEvent(kind = ev.kind, relX = (ev.relX ?: 0) - gutterWidth, relY = ev.relY))
-            handleMouseToBuffer(buffer, adj, singleLine = false, scrollOffset = clampedOffset)
+            handleMouseToBuffer(buffer, adj, singleLine = false, scrollOffset = clampedOffset, startSelection = true)
         },
         onMouseMove = { ev ->
-            // Only update cursor on hover if a button is pressed (drag); otherwise leave caret
             if (ev.button != null) {
                 val adj = ev.alterCopy(UIEvent(kind = ev.kind, relX = (ev.relX ?: 0) - gutterWidth, relY = ev.relY))
-                handleMouseToBuffer(buffer, adj, singleLine = false, scrollOffset = clampedOffset)
+                handleMouseToBuffer(buffer, adj, singleLine = false, scrollOffset = clampedOffset, extendSelection = true)
             }
         }
     )
@@ -1200,7 +1244,7 @@ fun EditorView(
         val cy = c.line
         val ch = c.char.firstOrNull()?.let { if (it.isWhitespace()) '_' else it } ?: '_'
         val fg = style.bg ?: Color(0, 0, 0)
-        val bg = style.fg ?: Color(255, 255, 255)
+        val bg = style.fg ?: Color(200, 200, 200)
         DOMNode(
             tag = "editor-cursor",
             text = "$ch",
@@ -1219,6 +1263,19 @@ fun EditorView(
 
     val children = listOfNotNull(contentNode, cursorNode) + selectionNodes + listOf(scrollbar)
 
+    onStateChange(
+        EditorState(
+            filePath = filePath,
+            language = language,
+            cursorLine = buffer.cursorPosition().line,
+            cursorColumn = buffer.cursorPosition().column,
+            selection = buffer.selectionText(),
+            totalLines = buffer.totalLines(),
+            bom = buffer.bom(),
+            encoding = buffer.encoding()
+        )
+    )
+
     DOMNode(
         tag = "editor",
         style = style,
@@ -1235,7 +1292,8 @@ fun VerticalScrollBar(
     onScrollTo: (Int) -> Unit,
     key: String? = null
 ): DOMNode = renderComponent(tree, key) {
-    val vh = ((style.bottom ?: 0) - (style.top ?: 0) + 1).coerceAtLeast(1)
+    val vh = ((style.bottom ?: 0) - (style.top ?: 0) + 1).coerceAtLeast(5)
+    val vw = ((style.right ?: 0) - (style.left ?: 0) + 1).coerceAtLeast(1)
     val ch = contentHeight.coerceAtLeast(vh)
     val maxOffset = (ch - vh).coerceAtLeast(0)
     val clampedOffset = scrollOffset.coerceIn(0, maxOffset)
@@ -1255,13 +1313,13 @@ fun VerticalScrollBar(
 
     // Wider visuals: two columns for track/indicator to make it easier to grab
     val indicatorStyle = StyleSet.parse(
-        "left:0; top:${indicatorTop}; right:1; bottom:${indicatorTop + indicatorHeight - 1}"
+        "left:0; top:${indicatorTop}; right:${vw}; bottom:${indicatorTop + indicatorHeight - 1}"
     )
 
     val indicator = DOMNode(
+        id = "scrollbar-indicator",
         tag = "scrollbar-indicator",
         style = indicatorStyle,
-        id = "scrollbar-indicator",
         onMouseDown = { ev ->
             val y = ev.relY ?: 0
             setDragging(true)
@@ -1280,7 +1338,7 @@ fun VerticalScrollBar(
 
     val track = DOMNode(
         tag = "scrollbar-track",
-        style = StyleSet.parse("left:0; top:0; right:1; bottom:${vh - 1}"),
+        style = StyleSet.parse("left:0; top:0; right:${vw}; bottom:${vh - 1}"),
         id = "scrollbar-track",
         onMouseDown = { ev ->
             val y = ev.relY ?: 0
@@ -1585,9 +1643,9 @@ fun VerticalTabsHost(
     onTabChanged: (String) -> Unit,
     key: String? = null
 ): DOMNode = renderComponent(tree, key) {
-    val hostWidth = (style.right ?: 0) - (style.left ?: 0) + 1
+    val hostWidth = (style.right ?: 0) - (style.left ?: 0) + 1 - 1
     val hostHeight = (style.bottom ?: 0) - (style.top ?: 0) + 1
-    val stripeWidth = 10
+    val stripeWidth = 6
     val buttonHeight = 3
     val initialTab = tabs.keys.firstOrNull()
     val (activeTab, setActiveTab) = useState { initialTab ?: "" }
@@ -1685,42 +1743,42 @@ fun FileTreeComponent(
         val bg = if (entry.typ == "folder") "#4c548f;text-decoration:bold" else "#3c4678"
         val fg = if (entry.fullPath == selected?.fullPath) "#fd8d1d;text-decoration:bold" else "#e0e0e6"
 
-        DOMNode(
-            tag = "${tag}:entry",
-            id = "${tag}:entry",
-            key = entry.fullPath,
-            text = text,
-            style = StyleSet.parse("left:0;top:${idx};right:${viewportWidth - 2};bottom:${idx};bg:$bg;fg:$fg"),
-            onMouseDown = { event: UIEvent ->
-                if (entry.typ == "folder") {
-                    val openerColumn = run {
-                        val plusIdx = text.indexOf("[+]")
-                        val minusIdx = text.indexOf("[-]")
-                        when {
-                            plusIdx >= 0 -> plusIdx
-                            minusIdx >= 0 -> minusIdx
-                            else -> -1
+            DOMNode(
+                tag = "${tag}:entry",
+                id = "${tag}:entry",
+                key = entry.fullPath,
+                text = text,
+                style = StyleSet.parse("left:0;top:${idx};right:${viewportWidth - 3};bottom:${idx};bg:$bg;fg:$fg"),
+                onMouseDown = { event: UIEvent ->
+                    if (entry.typ == "folder") {
+                        val openerColumn = run {
+                            val plusIdx = text.indexOf("[+]")
+                            val minusIdx = text.indexOf("[-]")
+                            when {
+                                plusIdx >= 0 -> plusIdx
+                                minusIdx >= 0 -> minusIdx
+                                else -> -1
+                            }
                         }
-                    }
-                    val toggleHit = openerColumn >= 0 &&
-                        (event.relX ?: -1) in openerColumn..(openerColumn + 2)
-                    if (toggleHit) {
-                        fileTree.toggle(entry.fullPath)
-                        fileTree.refreshOpenNodes()
-                        setVersion(version + 1)
+                        val toggleHit = openerColumn >= 0 &&
+                            (event.relX ?: -1) in openerColumn..(openerColumn + 2)
+                        if (toggleHit) {
+                            fileTree.toggle(entry.fullPath)
+                            fileTree.refreshOpenNodes()
+                            setVersion(version + 1)
+                        } else {
+                            onFolderSelected(entry)
+                        }
                     } else {
-                        onFolderSelected(entry)
+                        onFileSelected(entry)
                     }
-                } else {
-                    onFileSelected(entry)
                 }
-            }
-        )
-    }
+            )
+        }
 
     val scrollbar = VerticalScrollBar(
         tree = tree,
-        style = StyleSet.parse("left:${safeWidth - 3}; top:0; right:${safeWidth - 2}; bottom:${safeHeight - 1}"),
+        style = StyleSet.parse("left:${safeWidth - 2}; top:0; right:${safeWidth - 1}; bottom:${safeHeight - 1}"),
         contentHeight = entries.size.coerceAtLeast(viewportHeight),
         scrollOffset = clampedScroll,
         onScrollTo = { off -> setScrollOffset(off.coerceIn(0, maxOffset)) }
@@ -1760,7 +1818,8 @@ fun GitComponent(
     val branch = gitService.currentBranch()
     val (message, setMessage) = useState { "" }
     val (commitScroll, setCommitScroll) = useState { 0 }
-    val statusText = if (statusEntries.isEmpty()) "(clean)" else statusEntries.joinToString("\n") { "${it.code.padEnd(2)} ${it.path}" }
+    val statusText = if (statusEntries.isEmpty()) "(clean)"
+        else statusEntries.joinToString("\n") { "${it.code.padEnd(2)} ${(it.path + " ".repeat(safeWidth)).substring(0,safeWidth-3)}" }
 
     val commitLineWidth = (safeWidth - 2).coerceAtLeast(20)
     val commitLines = commits.map { c ->
@@ -1774,7 +1833,7 @@ fun GitComponent(
     val header = DOMNode(
         tag = "git-header",
         text = "origin/$branch",
-        style = StyleSet.parse("left:0; top:0; right:${safeWidth - 1}; bottom:0"),
+        style = StyleSet.parse("left:0; top:0; right:${safeWidth}; bottom:0"),
         id = "git-header",
     )
 
@@ -1782,28 +1841,28 @@ fun GitComponent(
     val statusBox = DOMNode(
         tag = "git-status",
         text = statusText,
-        style = StyleSet.parse("left:0; top:1; right:${safeWidth - 1}; bottom:${statusBoxHeight}"),
+        style = StyleSet.parse("left:0; top:1; right:${safeWidth}; bottom:${statusBoxHeight}"),
         id = "git-status",
     )
 
     val splitter1 = HorizontalSplitter(
-        style = StyleSet.parse("left:0; top:${statusBoxHeight + 1}; right:${safeWidth - 1}; bottom:${statusBoxHeight + 1}")
+        style = StyleSet.parse("left:0; top:${statusBoxHeight + 1}; right:${safeWidth}; bottom:${statusBoxHeight + 1}")
     )
 
     val messageBoxTop = statusBoxHeight + 2
-    val messageBoxHeight = 5
-    val messageLabel = DOMNode(
-        tag = "git-message-label",
-        text = "${workspaceRoot}\nMessage",
-        style = StyleSet.parse("left:0; top:${messageBoxTop}; right:${safeWidth - 1}; bottom:${messageBoxTop}"),
-        id = "git-message-label",
-    )
+    val messageBoxHeight = 10
+    // val messageLabel = DOMNode(
+    //     tag = "git-message-label",
+    //     text = "${workspaceRoot}\nMessage",
+    //     style = StyleSet.parse("left:0; top:${messageBoxTop}; right:${safeWidth - 1}; bottom:${messageBoxTop}"),
+    //     id = "git-message-label",
+    // )
 
     val (messageBuf, _) = useState { TextBuffer().apply { loadText(message) } }
     val messageArea = Textarea(
         tree = tree,
         buffer = messageBuf,
-        style = StyleSet.parse("left:0; top:${messageBoxTop + 1}; right:${safeWidth - 1}; bottom:${messageBoxTop + messageBoxHeight}"),
+        style = StyleSet.parse("left:0; top:${messageBoxTop}; right:${safeWidth -2}; bottom:${messageBoxTop + messageBoxHeight}"),
         onChange = { buf -> setMessage(buf.text()) }
     )
 
@@ -1838,7 +1897,7 @@ fun GitComponent(
     )
     val commitScrollbar = VerticalScrollBar(
         tree = tree,
-        style = StyleSet.parse("left:${safeWidth - 3}; top:${commitsTop}; right:${safeWidth - 1}; bottom:${safeHeight - 1}"),
+        style = StyleSet.parse("left:${safeWidth - 2}; top:${commitsTop}; right:${safeWidth - 1}; bottom:${safeHeight - 1}"),
         contentHeight = commitLines.size.coerceAtLeast(commitViewportHeight),
         scrollOffset = clampedCommitScroll,
         onScrollTo = { newOffset -> setCommitScroll(newOffset.coerceIn(0, maxCommitOffset)) }
@@ -1852,7 +1911,7 @@ fun GitComponent(
             header,
             statusBox,
             splitter1,
-            messageLabel,
+            // messageLabel,
             messageArea,
             commitBtn,
             tagBtn,
@@ -1878,6 +1937,8 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
     val (selectedFileTreeEntry,setSelectedFileTreeEntry) = useState<FileTreeEntry?> { null }
     val (editorBuffer, _) = useState { TextBuffer() }
     val (loadedPath, setLoadedPath) = useState { "" }
+        val (mouseAbs, setMouseAbs) = useState { Pair(0, 0) }
+        val (mouseRel, setMouseRel) = useState { Pair(0, 0) }
     val statText = "Pos:$splitterPos,drag:$dragging,StartX:$dragStartX,Split:$dragStartSplit"
 
         // --- Layout math
@@ -1887,6 +1948,8 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
         val mainHeight = rows - 2
         val tabContentWidth = (clampedSplit - 5).coerceAtLeast(1)
         val workspaceRoot = System.getProperty("user.dir") ?: "."
+        fun currentBranch(): String =
+            runCatching { runCommand("sh", "-c", "git rev-parse --abbrev-ref HEAD")?.trim().orEmpty() }.getOrDefault("")
         if (selectedFileTreeEntry?.typ == "file" && selectedFileTreeEntry.fullPath != loadedPath) {
             val content = runCatching { File(selectedFileTreeEntry.fullPath).readText() }
                 .getOrElse { err -> "Unable to read file:\\n${err.message ?: err.toString()}" }
@@ -1901,7 +1964,7 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             text = " Kotlin TUI Demo (q=quit) ",
             style = StyleSet.parse("left:0; top:0; right:${cols - 1}; bottom:0"),
             onMouseMove = {ev ->
-                setStatus("$statText,header,hover,x${ev.x},y${ev.y}")
+                // setStatus("$statText,header,hover,x${ev.x},y${ev.y}")
             }
         )
         val tt = 55
@@ -1920,13 +1983,13 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
                                 tree = tree,
                                 rootDir = workspaceRoot,
                                 selected=selectedFileTreeEntry,
-                                style = StyleSet.parse("left:0; top:0; right:${tabContentWidth - 1}; bottom:${mainHeight - 1}"),
+                                style = StyleSet.parse("left:0; top:0; right:${tabContentWidth - 4}; bottom:${mainHeight - 1}"),
                                 onFileSelected = { entry ->
-                                    setStatus("File Selected ${entry.fullPath}")
+                                    // setStatus("File Selected ${entry.fullPath}")
                                     setSelectedFileTreeEntry(entry)
                                 },
                                 onFolderSelected = { entry ->
-                                    setStatus("Folder Selected ${entry.fullPath}")
+                                    // setStatus("Folder Selected ${entry.fullPath}")
                                     setSelectedFileTreeEntry(entry)
                                 }
                             )
@@ -1935,19 +1998,19 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
                             GitComponent(
                                 tree = tree,
                                 workspaceRoot = workspaceRoot,
-                                style = StyleSet.parse("left:0; top:0; right:${tabContentWidth - 1}; bottom:${mainHeight - 1}")
+                                style = StyleSet.parse("left:0; top:0; right:${tabContentWidth - 4}; bottom:${mainHeight - 1}")
                             )
                         },
                         "Logs" to { _ ->
                             DOMNode(
                                 tag = "logs-tab",
                                 text = "Logs\n[recent events]",
-                                style = StyleSet.parse("left:0; top:0; right:${tabContentWidth - 1}; bottom:${mainHeight - 1}"),
+                                style = StyleSet.parse("left:0; top:0; right:${tabContentWidth - 4}; bottom:${mainHeight - 1}"),
                                 id = "logs-tab",
                             )
                         }
                     ),
-                    onTabChanged = { name -> setStatus("Tab -> $name") }
+                    onTabChanged = { name -> /*setStatus("Tab -> $name")*/ }
                 )
             )
         )
@@ -1957,21 +2020,40 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             tag = "splitter",
             id = "splitter",
             text = "⣿\n".repeat(mainHeight),
-            style = StyleSet.parse("left:${clampedSplit - 1}; top:0; right:${clampedSplit}; bottom:${mainHeight - 1}"),
+            style = StyleSet.parse("left:${clampedSplit - 1}; top:0; right:${clampedSplit - 1}; bottom:${mainHeight - 1}"),
             onMouseDown = { ev ->
                 val mx = ev.x ?: return@DOMNode
                 setDragging(true)
                 setDragStartX(mx)
                 setDragStartSplit(clampedSplit)
-                setStatus("Splitter grab @${ev.x},${ev.y}")
+                // setStatus("Splitter grab @${ev.x},${ev.y}")
             },
         )
 
         val content = EditorView(
             tree = tree,
             buffer = editorBuffer,
-            style = StyleSet.parse("left:${clampedSplit}; top:0; right:${cols - 1}; bottom:${mainHeight - 1}"),
-            onChange = { _ -> setStatus("Edited ${loadedPath}") }
+            style = StyleSet.parse("left:${clampedSplit+3}; top:0; right:${cols - 2}; bottom:${mainHeight - 1}"),
+            filePath = loadedPath,
+            language = when (loadedPath.substringAfterLast('.', "")) {
+                "kt" -> "Kotlin"
+                "java" -> "Java"
+                "md" -> "Markdown"
+                "py" -> "Python"
+                else -> "Text"
+            },
+            onChange = { _ -> /*setStatus("Edited ${loadedPath}")*/ },
+            onStateChange = { state ->
+                val time = java.time.LocalTime.now().withNano(0)
+                val statusLine = listOf(
+                    "$time",
+                    currentBranch(),
+                    workspaceRoot,
+                    "${mouseAbs.first},${mouseAbs.second} rel ${mouseRel.first},${mouseRel.second}",
+                    "${state.filePath.replace(workspaceRoot,"")} ${state.language} line ${state.cursorLine + 1}:${state.cursorColumn + 1} sel=${state.selection.length}"
+                )
+                setStatus(statusLine.joinToString(" | "))
+            }
         )
 
         val statusBar = DOMNode(
@@ -1980,7 +2062,7 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             text = "$status | split=$clampedSplit drag=$dragging",
             style = StyleSet.parse("left:0; top:${rows - 1}; right:${cols - 1}; bottom:${rows - 1}"),
             onMouseMove = {ev ->
-                setStatus("$statText,footer,hover,x${ev.x},y${ev.y}")
+                // setStatus("$statText,footer,hover,x${ev.x},y${ev.y}")
             }
         )
 
@@ -1992,12 +2074,14 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             onMouseMove = {ev ->
 
                 val mx = ev.x ?: return@DOMNode
+                ev.y?.let { setMouseAbs(mx to it) }
+                ev.relX?.let { rx -> ev.relY?.let { ry -> setMouseRel(rx to ry) } }
                 if (dragging) {
                     val dx = mx - dragStartX
                     setSplitterPos((dragStartSplit + dx).coerceIn(minPanelWidth, maxPanelWidth))
-                    setStatus("Splitter drag ${mx},${ev.y}")
+                    // setStatus("Splitter drag ${mx},${ev.y}")
                 } else {
-                    setStatus("$statText,main-area,x${ev.x},y${ev.y}")
+                    // setStatus("$statText,main-area,x${ev.x},y${ev.y}")
                 }
             },
             onMouseUp = { ev ->
@@ -2090,8 +2174,7 @@ fun runApp(
             // Poll a single event (non-blocking) after rendering
             val event = renderer.tryPollEvent()
             if (event != null) {
-                if (event.kind == "key_down" &&
-                    (event.key == "q" || event.key == "Q" || event.key == "Esc" || event.key == "\u0003")) {
+                if ((event.key == "Esc") || (event.ctrl && event.key == "q")|| (event.key == "~")) {
                     renderer.requestExit()
                 } else {
                     dispatchEventToDom(lastDom, event, 0, 0)
