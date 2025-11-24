@@ -74,17 +74,17 @@ file-entry {
 }
 
 vertical-scrollbar {
-    bg: #121727;
+    bg: #1f2942;
 }
 
 scrollbar-track {
-    bg: #121727;
-    fg: #9aa4bd;
+    bg: #1f2942;
+    fg: #c4cbe0;
 }
 
 scrollbar-indicator {
     bg: #f0a030;
-    fg: #0f1424;
+    fg: #0b0f1b;
 }
 
 git-panel {

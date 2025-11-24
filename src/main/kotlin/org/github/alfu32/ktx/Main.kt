@@ -1280,25 +1280,34 @@ fun FileTreeComponent(
     val safeHeight = ( (style.bottom ?: 0) - (style.top ?: 0) + 1 ).coerceAtLeast(10)
     val (fileTree, _) = useState { FileTree.newFileTree(rootDir) }
     val (version, setVersion) = useState { 0 } // version to trigger re-render
+    val (scrollOffset, setScrollOffset) = useState { 0 }
+
+    val viewportWidth = (safeWidth - 1).coerceAtLeast(1) // leave 1 column for scrollbar
+    val viewportHeight = safeHeight
 
     val entries = fileTree.flattened()
-    val lines = entries.take(safeHeight).mapIndexed { idx, entry ->
+    val maxOffset = (entries.size - viewportHeight).coerceAtLeast(0)
+    val clampedScroll = scrollOffset.coerceIn(0, maxOffset)
+    val lines = entries
+        .drop(clampedScroll)
+        .take(viewportHeight)
+        .mapIndexed { idx, entry ->
         val indent = "  ".repeat(entry.padding)
         val prefix = when (entry.typ) {
             "folder" -> if (entry.isOpen) "[-] " else "[+] "
             else -> "    "
         }
-        val label = (indent + prefix + entry.name).take(safeWidth)
-        val text = label.padEnd(safeWidth, ' ')
-        val bg = if (entry.typ == "folder") "#4c548f" else "#3c4678"
-        val fg = if (entry.fullPath == selected?.fullPath) "#fded7d" else "#e0e0e6"
+        val label = (indent + prefix + entry.name).take(viewportWidth-2)
+        val text = label.padEnd(viewportWidth-2, ' ')
+        val bg = if (entry.typ == "folder") "#4c548f;text-decoration:bold" else "#3c4678"
+        val fg = if (entry.fullPath == selected?.fullPath) "#fd8d1d;text-decoration:bold" else "#e0e0e6"
 
         DOMNode(
-            tag = "${tag}::entry",
-            id = "${tag}::entry",
+            tag = "${tag}:entry",
+            id = "${tag}:entry",
             key = entry.fullPath,
             text = text,
-            style = StyleSet.parse("left:0;top:${idx};right:${safeWidth - 1};bottom:${idx};bg:$bg;fg:$fg"),
+            style = StyleSet.parse("left:0;top:${idx};right:${viewportWidth - 2};bottom:${idx};bg:$bg;fg:$fg"),
             onMouseDown = { event: UIEvent ->
                 if (entry.typ == "folder") {
                     val openerColumn = run {
@@ -1326,11 +1335,19 @@ fun FileTreeComponent(
         )
     }
 
+    val scrollbar = VerticalScrollBar(
+        tree = tree,
+        style = StyleSet.parse("left:${safeWidth - 2}; top:0; right:${safeWidth - 2}; bottom:${safeHeight - 1}"),
+        contentHeight = entries.size.coerceAtLeast(viewportHeight),
+        scrollOffset = clampedScroll,
+        onScrollTo = { off -> setScrollOffset(off.coerceIn(0, maxOffset)) }
+    )
+
     DOMNode(
         tag = tag,
         style = StyleSet.parse("left:0;top:0;right:${safeWidth - 1};bottom:${safeHeight - 1}"),
         id = tag,
-        children = lines,
+        children = lines + scrollbar,
     )
 }
 
