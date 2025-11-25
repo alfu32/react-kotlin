@@ -4,8 +4,10 @@ import java.io.InputStream
 import java.io.Flushable
 import java.lang.ProcessBuilder
 import java.io.File
+import java.time.Instant.now
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.String
 
 
 /*
@@ -195,6 +197,7 @@ data class StyleSet(
     var borderSet: String? = null,
     var lineSet: String? = null
 ) {
+    var styleName=""
     fun mergeFrom(src: StyleSet) {
         if (src.top != null) top = src.top
         if (src.left != null) left = src.left
@@ -260,7 +263,7 @@ class StyleSheet(
             val path = splitPathKey(key)
             path.isNotEmpty() && path.last() == styleId
         }
-        if (matchingKeys.isEmpty()) return defaultStyle.copy()
+        if (matchingKeys.isEmpty()) return defaultStyle.copy().apply { styleName="default" }
 
         val bestKey = matchingKeys.maxByOrNull { splitPathKey(it).size }!!
         val bestPath = splitPathKey(bestKey)
@@ -879,7 +882,8 @@ data class DOMNode(
     val onResize: ((UIEvent) -> Unit)? = null,
 
     val children: List<DOMNode> = emptyList(),
-    val key: String? = ""
+    val key: String? = "",
+    val visible: Boolean = true,
 )
 
 fun Button(
@@ -1042,8 +1046,7 @@ fun Textarea(
     val bottom = style.bottom ?: top
     val totalHeight = (bottom - top + 1).coerceAtLeast(7) // enforce min height
 
-    val scrollbarWidth = 2
-    val contentWidth = (totalWidth - scrollbarWidth).coerceAtLeast(1)
+    val contentWidth = (totalWidth - 1).coerceAtLeast(1)
     val viewportHeight = totalHeight
 
     val (scrollOffset, setScrollOffset) = useState { 0 }
@@ -1080,7 +1083,7 @@ fun Textarea(
     )
 val scrollbar = VerticalScrollBar(
         tree = tree,
-        style = StyleSet.parse("left:${contentWidth+1}; top:0; right:${contentWidth + scrollbarWidth}; bottom:${viewportHeight - 1}"),
+        style = StyleSet.parse("left:${contentWidth}; top:0; right:${contentWidth}; bottom:${viewportHeight - 1}"),
         contentHeight = totalLines.coerceAtLeast(viewportHeight),
         scrollOffset = clampedOffset,
         onScrollTo = { off -> setScrollOffset(off.coerceIn(0, maxOffset)) }
@@ -1170,9 +1173,9 @@ fun EditorView(
 ): DOMNode = renderComponent(tree, key) {
     val totalWidth = ((style.right ?: 0) - (style.left ?: 0) + 1).coerceAtLeast(10)
     val totalHeight = ((style.bottom ?: 0) - (style.top ?: 0) + 1).coerceAtLeast(10)
-    val scrollbarWidth = 2
+    val scrollbarWidth = 1
     val totalLines = buffer.text().split('\n').size.coerceAtLeast(1)
-    val gutterWidth = (totalLines.toString().length + 1).coerceAtLeast(3)
+    val gutterWidth = (totalLines.toString().length + 2).coerceAtLeast(3)
     val contentWidth = (totalWidth - scrollbarWidth - gutterWidth).coerceAtLeast(1)
     val viewportHeight = totalHeight
 
@@ -1182,14 +1185,27 @@ fun EditorView(
 
     val slice = buffer.viewportSlice(
         EditorViewport(0, clampedOffset, contentWidth, viewportHeight),
-        gutterWidth = gutterWidth
+        gutterWidth = gutterWidth-1
     )
     val rendered = slice.lines.joinToString("\n") { line ->
         buildString {
-            append(line.gutter)
             line.segments.forEach { append(it.text) }
         }
     }
+    val gutter = DOMNode(
+        tag = "editor-gutter",
+        id = "editor-gutter",
+        text=slice.lines.joinToString("\n") { line -> line.gutter },
+        style = StyleSet(
+            left = 0,
+            top = 0,
+            right = gutterWidth,
+            bottom = viewportHeight,
+            fg = style.fg?:Color(220, 220, 100),
+            bg = style.bg?:Color(34, 60, 97)
+        )
+        // StyleSet.parse("left:0;top:0,bottom:$viewportHeight;right:$gutterWidth;bg:#787878;fg:#199100100;text-decoration:bold"),
+    )
 
     // Selection overlays (background only)
     val selectionNodes = mutableListOf<DOMNode>()
@@ -1198,8 +1214,8 @@ fun EditorView(
         line.segments.forEach { seg ->
             val len = seg.text.length
             if (seg.selected && len > 0) {
-                val left = gutterWidth + 1 + x  // align with caret offset
-                val right = gutterWidth + 1 + x + len - 1
+                val left = gutterWidth + x  // align with caret offset
+                val right = gutterWidth + x + len - 1
                 selectionNodes.add(
                     DOMNode(
                         tag = "editor-selection",
@@ -1222,13 +1238,13 @@ fun EditorView(
     val contentNode = DOMNode(
         tag = "editor-content",
         text = rendered,
-        style = StyleSet.parse("left:0; top:0; right:${gutterWidth + contentWidth - 1}; bottom:${viewportHeight - 1}"),
+        style = StyleSet.parse("left:$gutterWidth; top:0; right:${gutterWidth + contentWidth - 1}; bottom:${viewportHeight - 1}"),
         id = "editor-content",
         onKeyDown = { ev ->
             if (handleKeyForBuffer(buffer, ev, singleLine = false)) onChange(buffer)
         },
         onMouseDown = { ev ->
-            val adj = ev.alterCopy(UIEvent(kind = ev.kind, relX = (ev.relX ?: 0) - gutterWidth, relY = ev.relY))
+            val adj = ev.alterCopy(UIEvent(kind = ev.kind, relX = (ev.relX ?: 0) - gutterWidth+1, relY = ev.relY))
             handleMouseToBuffer(buffer, adj, singleLine = false, scrollOffset = clampedOffset, startSelection = true)
         },
         onMouseMove = { ev ->
@@ -1240,7 +1256,7 @@ fun EditorView(
     )
 
     val cursorNode = slice.cursor?.let { c ->
-        val cx = gutterWidth + c.column + 1
+        val cx = gutterWidth + c.column
         val cy = c.line
         val ch = c.char.firstOrNull()?.let { if (it.isWhitespace()) '_' else it } ?: '_'
         val fg = style.bg ?: Color(0, 0, 0)
@@ -1255,13 +1271,13 @@ fun EditorView(
 
     val scrollbar = VerticalScrollBar(
         tree = tree,
-        style = StyleSet.parse("left:${gutterWidth + contentWidth}; top:0; right:${gutterWidth + contentWidth + scrollbarWidth - 1}; bottom:${viewportHeight - 1}"),
+        style = StyleSet.parse("left:${gutterWidth + contentWidth}; top:0; right:${gutterWidth + contentWidth}; bottom:${viewportHeight - 1}"),
         contentHeight = totalLines.coerceAtLeast(viewportHeight),
         scrollOffset = clampedOffset,
         onScrollTo = { off -> setScrollOffset(off.coerceIn(0, maxOffset)) }
     )
 
-    val children = listOfNotNull(contentNode, cursorNode) + selectionNodes + listOf(scrollbar)
+    val children = listOfNotNull(gutter,contentNode, cursorNode) + selectionNodes + listOf(scrollbar)
 
     onStateChange(
         EditorState(
@@ -1293,7 +1309,7 @@ fun VerticalScrollBar(
     key: String? = null
 ): DOMNode = renderComponent(tree, key) {
     val vh = ((style.bottom ?: 0) - (style.top ?: 0) + 1).coerceAtLeast(5)
-    val vw = ((style.right ?: 0) - (style.left ?: 0) + 1).coerceAtLeast(1)
+    val vw = ((style.right ?: 0) - (style.left ?: 0)).coerceAtLeast(0)
     val ch = contentHeight.coerceAtLeast(vh)
     val maxOffset = (ch - vh).coerceAtLeast(0)
     val clampedOffset = scrollOffset.coerceIn(0, maxOffset)
@@ -1326,7 +1342,14 @@ fun VerticalScrollBar(
             setDragStartY(y)
             setDragStartTop(indicatorTop)
         },
-        onMouseUp = { _ -> setDragging(false) },
+    )
+
+    val hitArea = DOMNode(
+        id = "hit-area",
+        tag = "invisible",
+        style = StyleSet.parse(
+            "left:${if (dragging) -230 else 0}; top:${if(dragging)-230 else indicatorTop}; right:${if(dragging) 230 else vw}; bottom:${if(dragging) 150 else indicatorTop + indicatorHeight - 1}"
+        ),
         onMouseMove = { ev ->
             if (!dragging) return@DOMNode
             val y = ev.relY ?: 0
@@ -1334,6 +1357,8 @@ fun VerticalScrollBar(
             val newTop = dragStartTop + dy
             onScrollTo(toOffset(newTop))
         },
+        onMouseUp = { _ -> setDragging(false) },
+        visible = false
     )
 
     val track = DOMNode(
@@ -1345,7 +1370,7 @@ fun VerticalScrollBar(
             val targetTop = (y - indicatorHeight / 2).coerceIn(0, trackRoom)
             onScrollTo(toOffset(targetTop))
         },
-        children = listOf(indicator),
+        children = listOf(hitArea,indicator),
     )
 
     DOMNode(
@@ -1354,6 +1379,7 @@ fun VerticalScrollBar(
         id = "vertical-scrollbar",
         children = listOf(track),
     )
+    // track
 }
 
 // Simple vertical splitter component: renders a vertical bar filling its styled height.
@@ -1523,14 +1549,14 @@ private fun setFocus(node: DOMNode, id: String): Boolean {
     return false
 }
 
-private fun findNodeById(node: DOMNode, id: String): DOMNode? {
-    if (node.id == id) return node
-    for (child in node.children) {
-        val found = findNodeById(child, id)
-        if (found != null) return found
-    }
-    return null
-}
+// private fun findNodeById(node: DOMNode, id: String): DOMNode? {
+//     if (node.id == id) return node
+//     for (child in node.children) {
+//         val found = findNodeById(child, id)
+//         if (found != null) return found
+//     }
+//     return null
+// }
 
 private fun dispatchEventToDom(node: DOMNode, event: UIEvent, parentX: Int, parentY: Int) {
 
@@ -1567,47 +1593,48 @@ fun dispatchEvent(root: DOMNode, event: UIEvent) {
    ===================================================================== */
 
 fun renderDomTree(renderer: CanvasRenderer, dom: DOMNode, parentX: Int = 0, parentY: Int = 0) {
+    if (dom.visible) {
+        val left = dom.style.left ?: 0
+        val top = dom.style.top ?: 0
+        val right = dom.style.right ?: 0
+        val bottom = dom.style.bottom ?: 0
 
-    val left   = dom.style.left   ?: 0
-    val top    = dom.style.top    ?: 0
-    val right  = dom.style.right  ?: 0
-    val bottom = dom.style.bottom ?: 0
+        val x1 = parentX + left
+        val y1 = parentY + top
+        val x2 = parentX + right
+        val y2 = parentY + bottom
 
-    val x1 = parentX + left
-    val y1 = parentY + top
-    val x2 = parentX + right
-    val y2 = parentY + bottom
+        val width = (x2 - x1 + 1).coerceAtLeast(1)
+        val height = (y2 - y1 + 1).coerceAtLeast(1)
 
-    val width  = (x2 - x1 + 1).coerceAtLeast(1)
-    val height = (y2 - y1 + 1).coerceAtLeast(1)
-
-    dom.style.bg?.let { c ->
-        renderer.setBackgroundColor(c.r, c.g, c.b)
-        renderer.drawRect(x1, y1, width, height)
-    }
-
-    dom.style.fg?.let { c ->
-        renderer.setColor(c.r, c.g, c.b)
-    }
-
-    val deco = dom.style.textDecoration
-    renderer.bold(deco?.contains("bold") == true)
-    renderer.italic(deco?.contains("italic") == true)
-    renderer.underline(deco?.contains("underline") == true)
-    renderer.blink(deco?.contains("blink") == true)
-
-    dom.text?.let {
-        // Render multiline text manually (CanvasRenderer has no wrapping)
-        val lines = it.split('\n')
-        var yy = y1
-        for (line in lines) {
-            renderer.drawText(x1, yy, line)
-            yy++
+        dom.style.bg?.let { c ->
+            renderer.setBackgroundColor(c.r, c.g, c.b)
+            renderer.drawRect(x1, y1, width, height)
         }
-    }
 
-    for (child in dom.children)
-        renderDomTree(renderer, child, x1, y1)
+        dom.style.fg?.let { c ->
+            renderer.setColor(c.r, c.g, c.b)
+        }
+
+        val deco = dom.style.textDecoration
+        renderer.bold(deco?.contains("bold") == true)
+        renderer.italic(deco?.contains("italic") == true)
+        renderer.underline(deco?.contains("underline") == true)
+        renderer.blink(deco?.contains("blink") == true)
+
+        dom.text?.let {
+            // Render multiline text manually (CanvasRenderer has no wrapping)
+            val lines = it.split('\n')
+            var yy = y1
+            for (line in lines) {
+                renderer.drawText(x1, yy, line)
+                yy++
+            }
+        }
+
+        for (child in dom.children)
+            renderDomTree(renderer, child, x1, y1)
+    }
 }
 
 /* =====================================================================
@@ -1738,8 +1765,8 @@ fun FileTreeComponent(
             "folder" -> if (entry.isOpen) "[-] " else "[+] "
             else -> "    "
         }
-        val label = (indent + prefix + entry.name).take(viewportWidth-2)
-        val text = label.padEnd(viewportWidth-2, ' ')
+        val label = (indent + prefix + entry.name).take(viewportWidth)
+        val text = label.padEnd(viewportWidth, ' ')
         val bg = if (entry.typ == "folder") "#4c548f;text-decoration:bold" else "#3c4678"
         val fg = if (entry.fullPath == selected?.fullPath) "#fd8d1d;text-decoration:bold" else "#e0e0e6"
 
@@ -1748,7 +1775,7 @@ fun FileTreeComponent(
                 id = "${tag}:entry",
                 key = entry.fullPath,
                 text = text,
-                style = StyleSet.parse("left:0;top:${idx};right:${viewportWidth - 3};bottom:${idx};bg:$bg;fg:$fg"),
+                style = StyleSet.parse("left:0;top:${idx};right:${viewportWidth};bottom:${idx};bg:$bg;fg:$fg"),
                 onMouseDown = { event: UIEvent ->
                     if (entry.typ == "folder") {
                         val openerColumn = run {
@@ -1778,7 +1805,7 @@ fun FileTreeComponent(
 
     val scrollbar = VerticalScrollBar(
         tree = tree,
-        style = StyleSet.parse("left:${safeWidth - 2}; top:0; right:${safeWidth - 1}; bottom:${safeHeight - 1}"),
+        style = StyleSet.parse("left:${safeWidth}; top:0; right:${safeWidth}; bottom:${safeHeight - 1}"),
         contentHeight = entries.size.coerceAtLeast(viewportHeight),
         scrollOffset = clampedScroll,
         onScrollTo = { off -> setScrollOffset(off.coerceIn(0, maxOffset)) }
@@ -1786,7 +1813,7 @@ fun FileTreeComponent(
 
     DOMNode(
         tag = tag,
-        style = StyleSet.parse("left:0;top:0;right:${safeWidth - 1};bottom:${safeHeight - 1}"),
+        style = StyleSet.parse("left:0;top:0;right:${safeWidth};bottom:${safeHeight - 1}"),
         id = tag,
         children = lines + scrollbar,
     )
@@ -1897,7 +1924,7 @@ fun GitComponent(
     )
     val commitScrollbar = VerticalScrollBar(
         tree = tree,
-        style = StyleSet.parse("left:${safeWidth - 2}; top:${commitsTop}; right:${safeWidth - 1}; bottom:${safeHeight - 1}"),
+        style = StyleSet.parse("left:${safeWidth - 1}; top:${commitsTop}; right:${safeWidth - 1}; bottom:${safeHeight - 1}"),
         contentHeight = commitLines.size.coerceAtLeast(commitViewportHeight),
         scrollOffset = clampedCommitScroll,
         onScrollTo = { newOffset -> setCommitScroll(newOffset.coerceIn(0, maxCommitOffset)) }
@@ -2048,7 +2075,7 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
         val content = EditorView(
             tree = tree,
             buffer = editorBuffer,
-            style = StyleSet.parse("left:${clampedSplit+3}; top:0; right:${cols - 2}; bottom:${mainHeight - 1}"),
+            style = StyleSet.parse("left:${clampedSplit}; top:0; right:${cols - 2}; bottom:${mainHeight - 1}"),
             filePath = loadedPath,
             language = language,
             onChange = { _ -> /*setStatus("Edited ${loadedPath}")*/ },
@@ -2160,6 +2187,7 @@ fun runApp(
 
     try {
         while (renderer.isRunning()) {
+            val d0 = now().nano.toLong()
             frame += 1
 
             // Render frame
@@ -2200,6 +2228,10 @@ fun runApp(
             if (maxFrames != null && frame.toULong() >= maxFrames) {
                 renderer.requestExit()
             }
+            val du = (now().nano.toLong() - d0)/1000/1000
+            if(du<25) {
+                // sleep(25.toLong() - du)
+            }
         }
         appContext.onExit()
     } catch (x: Throwable) {
@@ -2225,7 +2257,7 @@ fun runApp(
    APPLICATION ENTRY POINT
    ===================================================================== */
 
-fun main() {
+fun main(args: Array<String>) {
     // Swap renderer implementation here:
     //  - StringSnapshotRenderer: single-frame render, prints buffer, exits
     //  - NoopRenderer: single-frame render, no output
@@ -2237,7 +2269,7 @@ fun main() {
     runApp(
         renderer = renderer,
         maxFrames = maxFrames?.toULong(),
-        styleFiles = listOf("styles/app.css"),
+        styleFiles = (listOf("styles/app.css") + args),
     ) { tree: ComponentTreeManager ->
         App(tree, renderer.cols(), renderer.rows())
     }.apply {

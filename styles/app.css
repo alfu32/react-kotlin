@@ -88,6 +88,9 @@ file-entry {
 vertical-scrollbar {
     bg: #1f2942;
 }
+vertical-scrollbar:focus {
+    bg: #31406a;
+}
 
 scrollbar-track {
     bg: #1f2942;
