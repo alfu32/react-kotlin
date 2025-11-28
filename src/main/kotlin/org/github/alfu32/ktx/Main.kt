@@ -1199,7 +1199,7 @@ val scrollbar = VerticalScrollBar(
         )
 
     // Apply viewport offset by adjusting buffer? simplest: re-render buffer with slice starting at offset
-    val slicedRendered = renderBuffer(buffer, contentWidth-10, viewportHeight, clampedOffset)
+    val slicedRendered = renderBuffer(buffer, contentWidth-1, viewportHeight, clampedOffset)
 
     contentNode.copy(
         text = slicedRendered
@@ -2036,7 +2036,7 @@ fun GitComponent(
     val (message, setMessage) = useState { "" }
     val (commitScroll, setCommitScroll) = useState { 0 }
     val statusText = if (statusEntries.isEmpty()) "(clean)"
-        else statusEntries.joinToString("\n") { "${it.code.padEnd(2)} ${(it.path + " ".repeat(contentWidth)).substring(0,contentWidth)}" }
+        else statusEntries.joinToString("\n") { "${it.code.padEnd(2)} ${(it.path + " ".repeat(contentWidth)).take(contentWidth)}" }
 
     val commitLineWidth = contentWidth.coerceAtLeast(10)
     val commitLines = commits.map { c ->
@@ -2044,7 +2044,7 @@ fun GitComponent(
         val dateStr = c.date?.let { commitDateFormatter.format(it) } ?: "----"
         val author = c.author.take(12).padEnd(12, ' ')
         val msg = c.message.lines().firstOrNull() ?: ""
-        "$hashShort  $dateStr  $author  $msg".substring(0,contentWidth)
+        "$hashShort  $dateStr  $author  $msg".take(contentWidth)
     }.map { line -> line.take(commitLineWidth) }
 
     val header = DOMNode(
@@ -2057,7 +2057,7 @@ fun GitComponent(
     val statusBoxHeight = (safeHeight / 3).coerceAtLeast(5)
     val statusBox = DOMNode(
         tag = "git-status",
-        text = statusText.substring(0,contentWidth),
+        text = statusText.take(contentWidth),
         style = StyleSet.parse("left:0; top:1; right:${contentWidth}; bottom:${statusBoxHeight}"),
         id = "git-status",
     )
@@ -2111,7 +2111,7 @@ fun GitComponent(
     val maxCommitOffset = (commitLines.size - commitViewportHeight).coerceAtLeast(0)
     val clampedCommitScroll = commitScroll.coerceIn(0, maxCommitOffset)
     val commitText = commitLines.drop(clampedCommitScroll).take(commitViewportHeight).joinToString("\n"){
-        it.substring(0,contentWidth-1)
+        it.take(contentWidth-1)
     }
     val commitTextBox = DOMNode(
         tag = "git-commits",
@@ -2121,7 +2121,7 @@ fun GitComponent(
     )
     val commitScrollbar = VerticalScrollBar(
         tree = tree,
-        style = StyleSet.parse("left:${contentWidth}; top:${commitsTop}; right:${contentWidth}; bottom:${safeHeight - 1}"),
+        style = StyleSet.parse("left:${contentWidth+1}; top:${commitsTop}; right:${contentWidth+1}; bottom:${safeHeight - 1}"),
         contentHeight = commitLines.size.coerceAtLeast(commitViewportHeight),
         scrollOffset = clampedCommitScroll,
         onScrollTo = { newOffset -> setCommitScroll(newOffset.coerceIn(0, maxCommitOffset)) }
