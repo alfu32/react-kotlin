@@ -625,7 +625,7 @@ class AnsiCanvasRenderer(
         }
     }
 
-    override fun pollEvent(): UIEvent? {
+    override fun pollEvent(): UIEvent {
         while (true) {
             val e = tryPollEvent()
             if (e != null) return e
@@ -942,7 +942,28 @@ data class DOMNode(
     val children: List<DOMNode> = emptyList(),
     val key: String? = "",
     val visible: Boolean = true,
-)
+) {
+    fun boundingBox() = style.boundingBox()
+    fun contains(node: DOMNode) = boundingBox().contains(node.boundingBox())
+
+
+    fun walkParentFirst(parentLevel: Int=0,parentIndex: Int=0,block: (node: DOMNode,level: Int,index: Int)->Unit){
+        block(this,parentLevel,parentIndex)
+        var childIndex=0
+        for (child in this.children) {
+            child.walkParentFirst(parentLevel=parentLevel+1,parentIndex=childIndex,block)
+            childIndex+=1
+        }
+    }
+    fun walkDepthFirst(parentLevel: Int=0,parentIndex: Int=0,block: (node: DOMNode,level: Int,index: Int)->Unit){
+        var childIndex=0
+        for (child in this.children) {
+            child.walkDepthFirst(parentLevel=parentLevel+1,parentIndex=childIndex,block)
+            childIndex+=1
+        }
+        block(this,parentLevel,parentIndex)
+    }
+}
 
 fun Button(
     text: String,
@@ -1124,8 +1145,12 @@ fun Textarea(
         style = StyleSet.parse("left:0; top:0; right:${contentWidth}; bottom:${viewportHeight - 1}"),
         id = "textarea-content",
         onMouseDown = { ev ->
-            handleMouseToBuffer(buffer, ev, singleLine = false, scrollOffset = clampedOffset, startSelection = true)
-            onMouseDown?.invoke(ev)
+            // TODO
+            // if(ev.button != null && (ev.button and 1) == 1) {
+                handleMouseToBuffer(buffer, ev, singleLine = false, scrollOffset = clampedOffset, startSelection = true)
+                onMouseDown?.invoke(ev)
+            // }
+            false
         },
         onMouseUp = onMouseUp,
         onMouseMove = { ev ->
@@ -1305,7 +1330,11 @@ fun EditorView(
         style = StyleSet.parse("left:$gutterWidth; top:0; right:${gutterWidth + contentWidth - 1}; bottom:${viewportHeight - 1}"),
         id = "editor-content",
         onKeyDown = { ev ->
-            if (handleKeyForBuffer(buffer, ev, singleLine = false)) onChange(buffer)
+            /// TODO
+            /// if(ev.button != null && ev.button == 1) {
+                if (handleKeyForBuffer(buffer, ev, singleLine = false)) onChange(buffer)
+            /// }
+            false
         },
         onMouseDown = { ev ->
             val adj = ev.alterCopy(UIEvent(kind = ev.kind, relX = (ev.relX ?: 0) - gutterWidth+1, relY = ev.relY))
@@ -1679,12 +1708,10 @@ private fun findTopmostHit(node: DOMNode, event: UIEvent, parentX: Int, parentY:
     val x2 = parentX + right + 1
     val y2 = parentY + bottom + 1
 
-    var hitChild: DOMNode? = null
     for (child in node.children) {
         val childHit = findTopmostHit(child, event, x1, y1)
-        if (childHit != null) hitChild = childHit
+        if (childHit != null) return childHit
     }
-    if (hitChild != null) return hitChild
     return if (x in x1 until x2 && y in y1 until y2) node else null
 }
 
@@ -1879,7 +1906,7 @@ fun VerticalTabsHost(
             content?.let {
                 DOMNode(
                     tag = "tab-content-area",
-                    style = StyleSet.parse("left:${stripeWidth}; top:0; right:${stripeWidth + contentWidth - 1}; bottom:${(hostHeight - 1).coerceAtLeast(0)}"),
+                    style = StyleSet.parse("left:${stripeWidth}; top:0; right:${hostWidth - 1}; bottom:${(hostHeight - 1).coerceAtLeast(0)}"),
                     id = "tab-content-area",
                     children = listOf(it),
                 )
@@ -1905,7 +1932,7 @@ fun FileTreeComponent(
     val (version, setVersion) = useState { 0 } // version to trigger re-render
     val (scrollOffset, setScrollOffset) = useState { 0 }
 
-    val viewportWidth = (safeWidth - 2).coerceAtLeast(1) // leave 1 column for scrollbar
+    val viewportWidth = (safeWidth - 1).coerceAtLeast(1) // leave 1 column for scrollbar
     val contentWidth = (safeWidth - 1).coerceAtLeast(1)
     val viewportHeight = safeHeight
 
@@ -1922,7 +1949,7 @@ fun FileTreeComponent(
             else -> "    "
         }
         val label = (indent + prefix + entry.name).take(contentWidth)
-        val text = label.padEnd(contentWidth, ' ')
+        val text = label.padEnd(contentWidth-1, ' ')
         val bg = if (entry.typ == "folder") "#4c548f;text-decoration:bold" else "#3c4678"
         val fg = if (entry.fullPath == selected?.fullPath) "#fd8d1d;text-decoration:bold" else "#e0e0e6"
 
@@ -1931,7 +1958,7 @@ fun FileTreeComponent(
                 id = "${tag}:entry",
                 key = entry.fullPath,
                 text = text,
-                style = StyleSet.parse("left:0;top:${idx};right:${contentWidth};bottom:${idx};bg:$bg;fg:$fg"),
+                style = StyleSet.parse("left:0;top:${idx};right:${contentWidth-1};bottom:${idx};bg:$bg;fg:$fg"),
                 onMouseDown = { event: UIEvent ->
                     if (entry.typ == "folder") {
                         val openerColumn = run {
@@ -2009,7 +2036,7 @@ fun GitComponent(
     val (message, setMessage) = useState { "" }
     val (commitScroll, setCommitScroll) = useState { 0 }
     val statusText = if (statusEntries.isEmpty()) "(clean)"
-        else statusEntries.joinToString("\n") { "${it.code.padEnd(2)} ${(it.path + " ".repeat(safeWidth)).substring(0,safeWidth-3)}" }
+        else statusEntries.joinToString("\n") { "${it.code.padEnd(2)} ${(it.path + " ".repeat(contentWidth)).substring(0,contentWidth)}" }
 
     val commitLineWidth = contentWidth.coerceAtLeast(10)
     val commitLines = commits.map { c ->
@@ -2017,20 +2044,20 @@ fun GitComponent(
         val dateStr = c.date?.let { commitDateFormatter.format(it) } ?: "----"
         val author = c.author.take(12).padEnd(12, ' ')
         val msg = c.message.lines().firstOrNull() ?: ""
-        "$hashShort  $dateStr  $author  $msg"
+        "$hashShort  $dateStr  $author  $msg".substring(0,contentWidth)
     }.map { line -> line.take(commitLineWidth) }
 
     val header = DOMNode(
         tag = "git-header",
         text = "origin/$branch",
-        style = StyleSet.parse("left:0; top:0; right:${safeWidth}; bottom:0"),
+        style = StyleSet.parse("left:0; top:0; right:${contentWidth}; bottom:0"),
         id = "git-header",
     )
 
     val statusBoxHeight = (safeHeight / 3).coerceAtLeast(5)
     val statusBox = DOMNode(
         tag = "git-status",
-        text = statusText,
+        text = statusText.substring(0,contentWidth),
         style = StyleSet.parse("left:0; top:1; right:${contentWidth}; bottom:${statusBoxHeight}"),
         id = "git-status",
     )
@@ -2089,7 +2116,7 @@ fun GitComponent(
     val commitTextBox = DOMNode(
         tag = "git-commits",
         text = commitText,
-        style = StyleSet.parse("left:0; top:${commitsTop}; right:${contentWidth}; bottom:${safeHeight - 1}"),
+        style = StyleSet.parse("left:0; top:${commitsTop}; right:${contentWidth-1}; bottom:${safeHeight - 1}"),
         id = "git-commits",
     )
     val commitScrollbar = VerticalScrollBar(
@@ -2275,6 +2302,11 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             id = "main-area",
             style = StyleSet.parse("left:0; top:1; right:${cols - 1}; bottom:${rows - 2}"),
             children = listOf(sidebar, splitter, content),
+            onMouseDown = {
+                setEventType(it.kind)
+                setWheelDelta(it.scrollDelta?:0)
+                false
+            },
             onMouseMove = {ev ->
 
                 val mx = ev.x ?: return@DOMNode
