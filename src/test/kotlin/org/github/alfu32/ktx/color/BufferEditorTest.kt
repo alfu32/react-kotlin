@@ -1,5 +1,8 @@
 package org.github.alfu32.ktx.color
 
+import org.github.alfu32.ktx.EditorViewport
+import org.github.alfu32.ktx.Position
+import org.github.alfu32.ktx.TextBuffer
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals

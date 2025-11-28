@@ -179,9 +179,48 @@ data class UIEvent(
             rows= conf.rows ?: this.rows,
         )
 }
+class CellPoint(
+    var x: Int=0,
+    var y: Int=0,
+)
+class ContentBox(
+    var top: Int=Int.MAX_VALUE,
+    var left: Int=Int.MAX_VALUE,
+    var bottom: Int = if(top==Int.MAX_VALUE)Int.MIN_VALUE else top,
+    var right: Int= if(left==Int.MAX_VALUE)Int.MIN_VALUE else left,
+){
+    val isEmpty: Boolean get() = top > bottom || left > right
+
+    fun contains(x:Int,y:Int):Boolean{
+        return !isEmpty && x in left until (right+1) && y in top until (bottom+1)
+    }
+    fun contains(b:ContentBox): Boolean {
+        return !b.isEmpty && !isEmpty && contains(b.left,b.top) && contains(b.right,b.bottom)
+    }
+    fun add(x:Int,y:Int){
+        top = Math.min(top,y)
+        left = Math.min(left,x)
+        bottom = Math.max(bottom,y)
+        right = Math.max(right,x)
+    }
+    fun add(b:ContentBox){
+        top = Math.min(top,b.top)
+        left = Math.min(left,b.left)
+        bottom = Math.max(bottom,b.bottom)
+        right = Math.max(right,b.right)
+    }
+
+    fun movedBy(offsetX: Int, offsetY: Int) : ContentBox{
+        top+=offsetY
+        left+=offsetX
+        bottom+=offsetY
+        right+=offsetX
+        return this
+    }
+}
 
 /* =====================================================================
-   STYLE SYSTEM (as provided by you)
+   STYLE SYSTEM (as provided by Uuu)
    ===================================================================== */
 
 data class Color(val r: Int, val g: Int, val b: Int)
@@ -209,6 +248,8 @@ data class StyleSet(
         if (src.borderSet != null) borderSet = src.borderSet
         if (src.lineSet != null) lineSet = src.lineSet
     }
+
+    fun boundingBox() = ContentBox(top?:0,left?:0,right?:0,bottom?:0)
 
     fun merged(src: StyleSet): StyleSet =
         this.copy().also { it.mergeFrom(src) }
@@ -259,6 +300,15 @@ class StyleSheet(
 ) {
 
     fun getStyle(styleId: String): StyleSet {
+        return rules.filter { (key,style) ->
+            key==styleId
+        }.values.fold(defaultStyle.copy().apply { styleName="default" }) {
+            acc: StyleSet,stl: StyleSet ->
+            acc.merged(stl)
+        }
+    }
+
+    fun getStyle0(styleId: String): StyleSet {
         val matchingKeys = rules.keys.filter { key ->
             val path = splitPathKey(key)
             path.isNotEmpty() && path.last() == styleId
@@ -655,15 +705,23 @@ class AnsiCanvasRenderer(
                 val press = s.endsWith("M")
                 val motion = (btnCode and 32) != 0
                 val baseBtn = btnCode and 0b11
-                val scroll = btnCode and 0b111
+                val isScroll = (btnCode and 0b1000000) != 0
 
                 val shift = (btnCode and 4) != 0
                 val alt = (btnCode and 8) != 0
                 val ctrl = (btnCode and 16) != 0
 
                 // Scroll wheel
-                if (scroll == 64) return UIEvent("mouse_scroll", x = x, y = y, scrollDelta = 1, ctrl = ctrl, alt = alt, shift = shift)
-                if (scroll == 65) return UIEvent("mouse_scroll", x = x, y = y, scrollDelta = -1, ctrl = ctrl, alt = alt, shift = shift)
+                if (isScroll) {
+                    val delta = when (baseBtn) {
+                        0 -> 1   // wheel up
+                        1 -> -1  // wheel down
+                        else -> 0
+                    }
+                    if (delta != 0) {
+                        return UIEvent("mouse_scroll", x = x, y = y, scrollDelta = delta, ctrl = ctrl, alt = alt, shift = shift)
+                    }
+                }
 
                 val button = when (baseBtn) {
                     0 -> 0
@@ -861,7 +919,7 @@ class StringSnapshotRenderer(
 /* =====================================================================
    DOM MODEL WITH EXPLICIT EVENT CALLBACKS
    ===================================================================== */
-
+typealias UIEventHandler = (UIEvent) -> Unit
 data class DOMNode(
     val tag: String,
     val text: String? = null,
@@ -871,15 +929,15 @@ data class DOMNode(
     var hasFocus: Boolean = false,
 
     // Event callbacks — all get UIEvent
-    val onMouseDown: ((UIEvent) -> Unit)? = null,
-    val onMouseUp: ((UIEvent) -> Unit)? = null,
-    val onMouseMove: ((UIEvent) -> Unit)? = null,
-    val onMouseScroll: ((UIEvent) -> Unit)? = null,
-    val onKeyDown: ((UIEvent) -> Unit)? = null,
-    val onKeyUp: ((UIEvent) -> Unit)? = null,
-    val onFocusGained: ((UIEvent) -> Unit)? = null,
-    val onFocusLost: ((UIEvent) -> Unit)? = null,
-    val onResize: ((UIEvent) -> Unit)? = null,
+    val onMouseDown: UIEventHandler? = null,
+    val onMouseUp: UIEventHandler? = null,
+    val onMouseMove: UIEventHandler? = null,
+    val onMouseScroll: UIEventHandler? = null,
+    val onKeyDown: UIEventHandler? = null,
+    val onKeyUp: UIEventHandler? = null,
+    val onFocusGained: UIEventHandler? = null,
+    val onFocusLost: UIEventHandler? = null,
+    val onResize: UIEventHandler? = null,
 
     val children: List<DOMNode> = emptyList(),
     val key: String? = "",
@@ -888,7 +946,7 @@ data class DOMNode(
 
 fun Button(
     text: String,
-    onClick: ((UIEvent) -> Unit)? = null,
+    onClick: UIEventHandler? = null,
     style: StyleSet = StyleSet(),
     key: String? = null
 ): DOMNode {
@@ -904,9 +962,9 @@ fun Button(
 // Simple vertical splitter component: renders a vertical bar filling its styled height.
 fun VerticalSplitter(
     style: StyleSet,
-    onMouseDown: ((UIEvent) -> Unit)? = null,
-    onMouseMove: ((UIEvent) -> Unit)? = null,
-    onMouseUp: ((UIEvent) -> Unit)? = null,
+    onMouseDown: UIEventHandler? = null,
+    onMouseMove: UIEventHandler? = null,
+    onMouseUp: UIEventHandler? = null,
     key: String? = null
 ): DOMNode {
     val top = style.top ?: 0
@@ -932,9 +990,9 @@ fun VerticalSplitter(
 // Horizontal splitter component (single-row line).
 fun HorizontalSplitter(
     style: StyleSet,
-    onMouseDown: ((UIEvent) -> Unit)? = null,
-    onMouseMove: ((UIEvent) -> Unit)? = null,
-    onMouseUp: ((UIEvent) -> Unit)? = null,
+    onMouseDown: UIEventHandler? = null,
+    onMouseMove: UIEventHandler? = null,
+    onMouseUp: UIEventHandler? = null,
     key: String? = null
 ): DOMNode {
     val left = style.left ?: 0
@@ -1033,10 +1091,10 @@ fun Textarea(
     buffer: ITextBuffer,
     style: StyleSet,
     onChange: (ITextBuffer) -> Unit = {},
-    onMouseDown: ((UIEvent) -> Unit)? = null,
-    onMouseUp: ((UIEvent) -> Unit)? = null,
-    onMouseMove: ((UIEvent) -> Unit)? = null,
-    onKeyUp: ((UIEvent) -> Unit)? = null,
+    onMouseDown: UIEventHandler? = null,
+    onMouseUp: UIEventHandler? = null,
+    onMouseMove: UIEventHandler? = null,
+    onKeyUp: UIEventHandler? = null,
     key: String? = null
 ): DOMNode = renderComponent(tree, key) {
     val left = style.left ?: 0
@@ -1080,13 +1138,19 @@ fun Textarea(
             if (handleKeyForBuffer(buffer, ev, singleLine = false)) onChange(buffer)
         },
         onKeyUp = onKeyUp,
+        onMouseScroll = {
+            ev ->
+            val so  = (scrollOffset + 3*(ev.scrollDelta?:0)).coerceIn(-3,maxOffset+5)
+            setScrollOffset(so)
+            false
+        }
     )
 val scrollbar = VerticalScrollBar(
         tree = tree,
         style = StyleSet.parse("left:${contentWidth+1}; top:0; right:${contentWidth+1}; bottom:${viewportHeight - 1}"),
         contentHeight = totalLines.coerceAtLeast(viewportHeight),
         scrollOffset = clampedOffset,
-        onScrollTo = { off -> setScrollOffset(off.coerceIn(0, maxOffset)) }
+        onScrollTo = { off -> setScrollOffset(off.coerceIn(-3,maxOffset+5)) }
     )
 
     val cursorFg = style.bg ?: Color(0, 0, 0)
@@ -1110,7 +1174,7 @@ val scrollbar = VerticalScrollBar(
         )
 
     // Apply viewport offset by adjusting buffer? simplest: re-render buffer with slice starting at offset
-    val slicedRendered = renderBuffer(buffer, contentWidth, viewportHeight, clampedOffset)
+    val slicedRendered = renderBuffer(buffer, contentWidth-10, viewportHeight, clampedOffset)
 
     contentNode.copy(
         text = slicedRendered
@@ -1129,10 +1193,10 @@ fun InputText(
     buffer: ITextBuffer,
     style: StyleSet,
     onChange: (ITextBuffer) -> Unit = {},
-    onMouseDown: ((UIEvent) -> Unit)? = null,
-    onMouseUp: ((UIEvent) -> Unit)? = null,
-    onMouseMove: ((UIEvent) -> Unit)? = null,
-    onKeyUp: ((UIEvent) -> Unit)? = null,
+    onMouseDown: UIEventHandler? = null,
+    onMouseUp: UIEventHandler? = null,
+    onMouseMove: UIEventHandler? = null,
+    onKeyUp: UIEventHandler? = null,
     key: String? = null
 ): DOMNode {
     val left = style.left ?: 0
@@ -1252,6 +1316,12 @@ fun EditorView(
                 val adj = ev.alterCopy(UIEvent(kind = ev.kind, relX = (ev.relX ?: 0) - gutterWidth, relY = ev.relY))
                 handleMouseToBuffer(buffer, adj, singleLine = false, scrollOffset = clampedOffset, extendSelection = true)
             }
+        },
+        onMouseScroll = {
+            ev ->
+            val so  = (scrollOffset + 3*(ev.scrollDelta?:0)).coerceIn(-3,maxOffset+5)
+            setScrollOffset(so)
+            false
         }
     )
 
@@ -1357,7 +1427,7 @@ fun VerticalScrollBar(
             val newTop = dragStartTop + dy
             onScrollTo(toOffset(newTop))
         },
-        onMouseUp = { _ -> setDragging(false) },
+        onMouseUp = { ev -> setDragging(false) },
         visible = false
     )
 
@@ -1385,9 +1455,9 @@ fun VerticalScrollBar(
 // Simple vertical splitter component: renders a vertical bar filling its styled height.
 fun VerticalSplitter(
     style: StyleSet,
-    onMouseDown: ((UIEvent) -> Unit)? = null,
-    onMouseMove: ((UIEvent) -> Unit)? = null,
-    onMouseUp: ((UIEvent) -> Unit)? = null
+    onMouseDown: UIEventHandler? = null,
+    onMouseMove: UIEventHandler? = null,
+    onMouseUp: UIEventHandler? = null
 ): DOMNode {
     val top = style.top ?: 0
     val bottom = style.bottom ?: top
@@ -1509,6 +1579,91 @@ private fun hitTest(x: Int, y: Int, node: DOMNode, parentX: Int, parentY: Int): 
 
     return x in x1 until x2 && y in y1 until y2
 }
+
+class Event(
+    var kind:String,
+    var payload:String? = "",
+    var propagationStoped: Boolean = false,
+) {
+    fun stopPropagation() {
+        propagationStoped = true
+    }
+
+    override fun toString(): String {
+        val hash=super.toString()
+        return "{kind:$kind,payload:$payload,propagationStoped:$propagationStoped,hash:$hash}"
+    }
+}
+typealias EventHandler = (Event) -> Unit
+
+data class TNode<T>(
+    var value: T? = null,
+) {
+    var children: MutableList<TNode<T>> = mutableListOf()
+    var onEvent: EventHandler ={}
+    var zIndex=-1
+    var isVisible=true
+    var bb= ContentBox()
+    companion object{
+        var zIndex: Int = 0
+        fun reset(){
+            zIndex = 0
+        }
+    }
+    // Secondary ctor: allow TreeNode("value") { ... }
+    constructor(
+        value: T,
+        build: TNode<T>.() -> Unit
+    ) : this(value) {
+        this.zIndex = TNode.zIndex++
+        this.build()
+    }
+
+    // child { TreeNode("...") { ... } }
+    fun child(genNode: () -> TNode<T>) {
+        children.add(genNode())
+    }
+    fun visible(st : Boolean){
+        isVisible = st
+    }
+    // box { TreeNode("...") { ... } }
+    fun box(genBox: () -> Array<Int> ) {
+        val points = genBox()
+        bb.add(points.getOrNull(0)?:0,points.getOrNull(1)?:0)
+        bb.add(points.getOrNull(2)?:0,points.getOrNull(3)?:0)
+    }
+    fun on(type:String="any",handler: EventHandler ){
+        onEvent = handler
+    }
+
+    fun scanParentFirst(parentLevel: Int=0,parentIndex: Int=0,block: (node: TNode<T>, level: Int, index: Int)->Unit){
+        block(this,parentLevel,parentIndex)
+        var childIndex=0
+        for (child in this.children) {
+            child.scanParentFirst(parentLevel=parentLevel+1,parentIndex=childIndex,block)
+            childIndex+=1
+        }
+    }
+    fun scanDepthFirst(parentLevel: Int=0,parentIndex: Int=0,block: (node: TNode<T>, level: Int, index: Int)->Unit){
+        var childIndex=0
+        for (child in this.children) {
+            child.scanDepthFirst(parentLevel=parentLevel+1,parentIndex=childIndex,block)
+            childIndex+=1
+        }
+        block(this,parentLevel,parentIndex)
+    }
+    fun dispatchEventParentFirst(ev: Event){
+        scanDepthFirst { node,level,index ->
+            node.onEvent(ev)
+        }
+    }
+    fun dispatchEventDepthFirst(ev: Event){
+        scanDepthFirst { node,level,index ->
+            node.onEvent(ev)
+        }
+    }
+}
+
 
 private fun findTopmostHit(node: DOMNode, event: UIEvent, parentX: Int, parentY: Int): DOMNode? {
     val x = event.x ?: return null
@@ -1800,6 +1955,12 @@ fun FileTreeComponent(
                     } else {
                         onFileSelected(entry)
                     }
+                },
+                onMouseScroll = {
+                        ev ->
+                    val so  = (scrollOffset + 3*(ev.scrollDelta?:0)).coerceIn(-3,maxOffset+5)
+                    setScrollOffset(so)
+                    false
                 }
             )
         }
@@ -1898,26 +2059,33 @@ fun GitComponent(
     val buttonsTop = messageBoxTop + messageBoxHeight + 1
     val buttonWidth = (contentWidth / 3).coerceAtLeast(8)
     val commitBtn = Button(
-        text = "commit",
-        style = StyleSet.parse("left:1; top:${buttonsTop}; right:${6}; bottom:${buttonsTop}"),
-        onClick ={ onCommit(message) }
+        text = " commit ",
+        style = StyleSet.parse("left:1; top:${buttonsTop}; right:${8}; bottom:${buttonsTop}"),
+        onClick ={
+            onCommit(message)
+        }
     )
     val tagBtn = Button(
-        text = "--tag--",
-        style = StyleSet.parse("left:${safeWidth/2 - 4}; top:${buttonsTop}; right:${14}; bottom:${buttonsTop}"),
-        onClick = { onTag(message) }
+        text = "  tag   ",
+        style = StyleSet.parse("left:${10}; top:${buttonsTop}; right:${17}; bottom:${buttonsTop}"),
+        onClick = { onTag(message)
+        }
     )
     val pushBtn = Button(
-        text = "-push-",
-        style = StyleSet.parse("left:${safeWidth-11}; top:${buttonsTop}; right:${19}; bottom:${buttonsTop}"),
-        onClick = { onPush() }
+        text = "  push  ",
+        style = StyleSet.parse("left:${19}; top:${buttonsTop}; right:${26}; bottom:${buttonsTop}"),
+        onClick = {
+            onPush()
+        }
     )
 
     val commitsTop = buttonsTop + 3
     val commitViewportHeight = (safeHeight - commitsTop).coerceAtLeast(3)
     val maxCommitOffset = (commitLines.size - commitViewportHeight).coerceAtLeast(0)
     val clampedCommitScroll = commitScroll.coerceIn(0, maxCommitOffset)
-    val commitText = commitLines.drop(clampedCommitScroll).take(commitViewportHeight).joinToString("\n")
+    val commitText = commitLines.drop(clampedCommitScroll).take(commitViewportHeight).joinToString("\n"){
+        it.substring(0,contentWidth-1)
+    }
     val commitTextBox = DOMNode(
         tag = "git-commits",
         text = commitText,
@@ -1948,6 +2116,12 @@ fun GitComponent(
             commitTextBox,
             commitScrollbar
         ),
+        onMouseScroll =  {
+                ev ->
+            val so  = (commitScroll + 3*(ev.scrollDelta?:0)).coerceIn(-3,commits.size+5)
+            setCommitScroll(so)
+            false
+        }
     )
 }
 /* =====================================================================
@@ -1966,8 +2140,10 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
     val (selectedFileTreeEntry,setSelectedFileTreeEntry) = useState<FileTreeEntry?> { null }
     val (editorBuffer, _) = useState { TextBuffer() }
     val (loadedPath, setLoadedPath) = useState { "" }
+        val (eventType, setEventType) = useState { "" }
+        val (wheelDelta, setWheelDelta) = useState { 0 }
         val (mouseAbs, setMouseAbs) = useState { Pair(0, 0) }
-        val (mouseRel, setMouseRel) = useState { Pair(0, 0) }
+    val (mouseRel, setMouseRel) = useState { Pair(0, 0) }
     val statText = "Pos:$splitterPos,drag:$dragging,StartX:$dragStartX,Split:$dragStartSplit"
 
         // --- Layout math
@@ -1997,7 +2173,9 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
             "$time",
             currentBranch(),
             workspaceRoot.replace("/home/devlin","~"),
+            "Event: $eventType ",
             "${mouseAbs.first},${mouseAbs.second} rel ${mouseRel.first},${mouseRel.second}",
+            " roll: $wheelDelta ",
             "${selectedFileTreeEntry?.fullPath?.replace(workspaceRoot,"")} $language"
         )
 
@@ -2022,7 +2200,7 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
                                 tree = tree,
                                 rootDir = workspaceRoot,
                                 selected=selectedFileTreeEntry,
-                                style = StyleSet.parse("left:0; top:0; right:${tabContentWidth}; bottom:${mainHeight - 1}"),
+                                style = StyleSet.parse("left:0; top:0; right:${tabContentWidth-1}; bottom:${mainHeight - 1}"),
                                 onFileSelected = { entry ->
                                     // setStatus("File Selected ${entry.fullPath}")
                                     setSelectedFileTreeEntry(entry)
@@ -2040,7 +2218,7 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
                                 style = StyleSet.parse("left:0; top:0; right:${tabContentWidth}; bottom:${mainHeight - 1}")
                             )
                         },
-                        "Logs" to { _ ->
+                        "Settings" to { _ ->
                             DOMNode(
                                 tag = "logs-tab",
                                 text = "Logs\n[recent events]",
@@ -2102,17 +2280,54 @@ fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
                 val mx = ev.x ?: return@DOMNode
                 ev.y?.let { setMouseAbs(mx to it) }
                 ev.relX?.let { rx -> ev.relY?.let { ry -> setMouseRel(rx to ry) } }
+
                 if (dragging) {
                     val dx = mx - dragStartX
                     setSplitterPos((dragStartSplit + dx).coerceIn(minPanelWidth, maxPanelWidth))
+                    setEventType("dragging")
                     // setStatus("Splitter drag ${mx},${ev.y}")
                 } else {
+                    setEventType(ev.kind)
                     // setStatus("$statText,main-area,x${ev.x},y${ev.y}")
                 }
+                setWheelDelta(ev.scrollDelta?:0)
+                true
             },
             onMouseUp = { ev ->
                 setDragging(false)
-            }
+                setEventType(ev.kind)
+                false
+            },
+            onMouseScroll = {
+                setEventType(it.kind)
+                setWheelDelta(it.scrollDelta?:0)
+                false
+            },
+            onResize = {
+                setEventType(it.kind)
+                setWheelDelta(it.scrollDelta?:0)
+                false
+            },
+            onKeyUp = {
+                setEventType(it.kind)
+                setWheelDelta(it.scrollDelta?:0)
+                false
+            },
+            onKeyDown = {
+                setEventType(it.kind)
+                setWheelDelta(it.scrollDelta?:0)
+                false
+            },
+            onFocusLost = {
+                setEventType(it.kind)
+                setWheelDelta(it.scrollDelta?:0)
+                false
+            },
+            onFocusGained = {
+                setEventType(it.kind)
+                setWheelDelta(it.scrollDelta?:0)
+                false
+            },
         )
 
         // Root composes everything
@@ -2167,7 +2382,7 @@ fun runApp(
     val tree = ComponentTreeManager()
     var lastDom: DOMNode = DOMNode("empty",)
     var focusedId: String? = null
-    // var focusedId: String? = null
+
     val styleSheet = StyleSheet.loadFromFiles(styleFiles)
 
     // Try to enter raw mode for ANSI terminals so key/mouse events work and echo is off.
