@@ -1,4 +1,14 @@
-package org.github.alfu32.ktx
+package org.github.alfu32.ktx.lib
+
+import org.github.alfu32.ktx.CursorView
+import org.github.alfu32.ktx.EditorViewport
+import org.github.alfu32.ktx.ITextBuffer
+import org.github.alfu32.ktx.Position
+import org.github.alfu32.ktx.SelectionRange
+import org.github.alfu32.ktx.ViewLine
+import org.github.alfu32.ktx.ViewSegment
+import org.github.alfu32.ktx.ViewportSlice
+import kotlin.text.iterator
 
 /*  
 ===============================================================
@@ -530,3 +540,6 @@ class TextBuffer : ITextBuffer {
         return Position(line, i)
     }
 }
+
+data class Notification(val kind: NotificationKind, val text: String)
+enum class NotificationKind { COPY, CUT }

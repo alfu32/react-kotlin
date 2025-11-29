@@ -1,5 +1,9 @@
-package org.github.alfu32.ktx
+package org.github.alfu32.ktx.lib
+import org.github.alfu32.ktx.FileTreeEntry
+import org.github.alfu32.ktx.FileTreeItem
+import org.github.alfu32.ktx.IFileTree
 import java.io.File
+import kotlin.collections.plusAssign
 
 
 // Implementation hidden behind the interface

@@ -1,10 +1,10 @@
 package org.github.alfu32.ktx.color
 
-import org.github.alfu32.ktx.ComponentTreeManager
-import org.github.alfu32.ktx.DOMNode
-import org.github.alfu32.ktx.UIEvent
-import org.github.alfu32.ktx.counterComponent
-import org.github.alfu32.ktx.listOfCounters
+import react.ComponentTreeManager
+import react.DOMNode
+import react.UIEvent
+import org.github.alfu32.ktx.components.Counter
+import org.github.alfu32.ktx.components.Counters
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 
@@ -18,14 +18,14 @@ class ComponentSystemTests {
         val tree = ComponentTreeManager()
 
         tree.beginFrame()
-        val dom1 = counterComponent(tree)
+        val dom1 = Counter(tree)
         val click = dom1.onMouseDown!!
         tree.endFrame()
 
         click(UIEvent(kind="mouse_down"))
 
         tree.beginFrame()
-        val dom2 = counterComponent(tree)
+        val dom2 = Counter(tree)
         tree.endFrame()
 
         assertEquals("Count: 1", dom2.text)
@@ -36,7 +36,7 @@ class ComponentSystemTests {
         val values = mutableListOf(1, 2, 3)
 
         tree.beginFrame()
-        val dom1 = listOfCounters(tree, values)
+        val dom1 = Counters(tree, values)
         val click2 = dom1.children[1].onMouseDown!!
         tree.endFrame()
 
@@ -46,7 +46,7 @@ class ComponentSystemTests {
         values.add(0, 2)
 
         tree.beginFrame()
-        val dom2 = listOfCounters(tree, values)
+        val dom2 = Counters(tree, values)
         tree.endFrame()
 
         assertEquals("Count: 1", dom2.children[0].text)
@@ -59,8 +59,8 @@ class ComponentSystemTests {
             DOMNode(
                 "counter",
                 children = listOf(
-                    counterComponent(tree),
-                    counterComponent(tree)
+                    Counter(tree),
+                    Counter(tree)
                 ),
             )
 

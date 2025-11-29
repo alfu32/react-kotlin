@@ -1,4 +1,4 @@
-package org.github.alfu32.ktx.vdom
+package org.github.alfu32.ktx.lib
 
 // =============================================================
 // GitService.kt
