@@ -314,16 +314,17 @@ fun runApp(
     var lastDom: DOMNode = DOMNode("empty",)
     var focusedId: String? = null
     var lastHitIds: List<String> = emptyList()
-    var fps: Double = 0.0
-    var fpsWindowStart = System.nanoTime()
-    var fpsFrameCount = 0
-    val osBean = ManagementFactory.getOperatingSystemMXBean() as? OperatingSystemMXBean
-    var cpuPercent = 0.0
-    var cpuLastWall = System.nanoTime()
-    var cpuLastProc = osBean?.processCpuTime ?: 0L
-    val fpsMeter = Meter("FPS", "f/s", 1024)
-    val memMeter = Meter("Mem", "MB", 1024)
-    val cpuMeter = Meter("CPU", "%", 1024)
+
+    // TODO put in its own class PerfCounters, method init or constructor ////////////// var fps: Double = 0.0
+    // TODO put in its own class PerfCounters, method init or constructor ////////////// var fpsWindowStart = System.nanoTime()
+    // TODO put in its own class PerfCounters, method init or constructor ////////////// var fpsFrameCount = 0
+    // TODO put in its own class PerfCounters, method init or constructor ////////////// val osBean = ManagementFactory.getOperatingSystemMXBean() as? OperatingSystemMXBean
+    // TODO put in its own class PerfCounters, method init or constructor ////////////// var cpuPercent = 0.0
+    // TODO put in its own class PerfCounters, method init or constructor ////////////// var cpuLastWall = System.nanoTime()
+    // TODO put in its own class PerfCounters, method init or constructor ////////////// var cpuLastProc = osBean?.processCpuTime ?: 0L
+    // TODO put in its own class PerfCounters, method init or constructor ////////////// val fpsMeter = Meter("FPS", "f/s", 1024)
+    // TODO put in its own class PerfCounters, method init or constructor ////////////// val memMeter = Meter("Mem", "MB", 1024)
+    // TODO put in its own class PerfCounters, method init or constructor ////////////// val cpuMeter = Meter("CPU", "%", 1024)
 
     val styleSheet = StyleSheet.loadFromFiles(styleFiles)
 
@@ -341,7 +342,6 @@ fun runApp(
         while (renderer.isRunning()) {
             val d0 = Instant.now().nano.toLong()
             frame += 1
-            fpsFrameCount++
 
             // Render frame
             tree.beginFrame()
@@ -353,30 +353,31 @@ fun runApp(
             lastDom = root
 
             renderer.clear()
-            val nodeCount = renderDomTree(renderer, root)
-            val rt = Runtime.getRuntime()
-            val usedMb = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024)
-            memMeter.collect(usedMb.toInt(), frame)
-            val hud = buildString {
-                append(fpsMeter.toString())
-                append(" | Nodes:")
-                append(nodeCount.toString().padStart(4, ' '))
-                append(" | ")
-                append(memMeter.toString())
-                append(" | ")
-                append(cpuMeter.toString())
-            }.padEnd(100)
-            val hudStartX = (renderer.cols() - hud.length).coerceAtLeast(0)
-            val hitsText = "Hits: [${lastHitIds.joinToString(",")}]".padEnd(100)
-            val hitsStartX = (renderer.cols() - hitsText.length).coerceAtLeast(100)
-            val hitsY = (renderer.rows() - 1).coerceAtLeast(1)
-            renderer.setBackgroundColor(180,180,180)
-            renderer.setColor(22,22,22)
-            val mx = hudStartX.coerceAtMost(hitsStartX)
-            renderer.drawText(mx-1, hitsY-1, hud)
-            renderer.drawText(mx-1, hitsY, hitsText)
-            renderer.resetAttributes()
-            renderer.flush()
+            // TODO put in own class PerfCounters, method print(renderer) //// fpsFrameCount++
+            // TODO put in own class PerfCounters, method print(renderer) //// val nodeCount = renderDomTree(renderer, root)
+            // TODO put in own class PerfCounters, method print(renderer) //// val rt = Runtime.getRuntime()
+            // TODO put in own class PerfCounters, method print(renderer) //// val usedMb = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024)
+            // TODO put in own class PerfCounters, method print(renderer) //// memMeter.collect(usedMb.toInt(), frame)
+            // TODO put in own class PerfCounters, method print(renderer) //// val hud = buildString {
+            // TODO put in own class PerfCounters, method print(renderer) ////     append(fpsMeter.toString())
+            // TODO put in own class PerfCounters, method print(renderer) ////     append(" | Nodes:")
+            // TODO put in own class PerfCounters, method print(renderer) ////     append(nodeCount.toString().padStart(4, ' '))
+            // TODO put in own class PerfCounters, method print(renderer) ////     append(" | ")
+            // TODO put in own class PerfCounters, method print(renderer) ////     append(memMeter.toString())
+            // TODO put in own class PerfCounters, method print(renderer) ////     append(" | ")
+            // TODO put in own class PerfCounters, method print(renderer) ////     append(cpuMeter.toString())
+            // TODO put in own class PerfCounters, method print(renderer) //// }.padEnd(100)
+            // TODO put in own class PerfCounters, method print(renderer) //// val hudStartX = (renderer.cols() - hud.length).coerceAtLeast(0)
+            // TODO put in own class PerfCounters, method print(renderer) //// val hitsText = "Hits: [${lastHitIds.joinToString(",")}]".padEnd(100)
+            // TODO put in own class PerfCounters, method print(renderer) //// val hitsStartX = (renderer.cols() - hitsText.length).coerceAtLeast(100)
+            // TODO put in own class PerfCounters, method print(renderer) //// val hitsY = (renderer.rows() - 1).coerceAtLeast(1)
+            // TODO put in own class PerfCounters, method print(renderer) //// renderer.setBackgroundColor(180,180,180)
+            // TODO put in own class PerfCounters, method print(renderer) //// renderer.setColor(22,22,22)
+            // TODO put in own class PerfCounters, method print(renderer) //// val mx = hudStartX.coerceAtMost(hitsStartX)
+            // TODO put in own class PerfCounters, method print(renderer) //// renderer.drawText(mx-1, hitsY-1, hud)
+            // TODO put in own class PerfCounters, method print(renderer) //// renderer.drawText(mx-1, hitsY, hitsText)
+            // TODO put in own class PerfCounters, method print(renderer) //// renderer.resetAttributes()
+            // TODO put in own class PerfCounters, method print(renderer) //// renderer.flush()
 
             // Poll a single event (non-blocking) after rendering
             val event = renderer.tryPollEvent()
@@ -408,26 +409,26 @@ fun runApp(
             if (maxFrames != null && frame.toULong() >= maxFrames) {
                 renderer.requestExit()
             }
-            val now = System.nanoTime()
-            if (now - fpsWindowStart >= 1_000_000_000L) {
-                fps = fpsFrameCount.toDouble() * 1_000_000_000.0 / (now - fpsWindowStart).toDouble()
-                fpsFrameCount = 0
-                fpsWindowStart = now
-                fpsMeter.collect(fps.roundToInt(), frame)
-            }
-            if (osBean != null) {
-                val procNow = osBean.processCpuTime
-                val wallNow = now
-                val wallDelta = wallNow - cpuLastWall
-                val cpuDelta = procNow - cpuLastProc
-                if (wallDelta > 0) {
-                    val cores = osBean.availableProcessors.toDouble().coerceAtLeast(1.0)
-                    cpuPercent = (cpuDelta.toDouble() / wallDelta.toDouble()) * 100.0 / cores
-                }
-                cpuLastWall = wallNow
-                cpuLastProc = procNow
-                cpuMeter.collect(cpuPercent.roundToInt(), frame)
-            }
+            // TODO put in own class PerfCounters, method collect ///// val now = System.nanoTime()
+            // TODO put in own class PerfCounters, method collect ///// if (now - fpsWindowStart >= 1_000_000_000L) {
+            // TODO put in own class PerfCounters, method collect /////     fps = fpsFrameCount.toDouble() * 1_000_000_000.0 / (now - fpsWindowStart).toDouble()
+            // TODO put in own class PerfCounters, method collect /////     fpsFrameCount = 0
+            // TODO put in own class PerfCounters, method collect /////     fpsWindowStart = now
+            // TODO put in own class PerfCounters, method collect /////     fpsMeter.collect(fps.roundToInt(), frame)
+            // TODO put in own class PerfCounters, method collect ///// }
+            // TODO put in own class PerfCounters, method collect ///// if (osBean != null) {
+            // TODO put in own class PerfCounters, method collect /////     val procNow = osBean.processCpuTime
+            // TODO put in own class PerfCounters, method collect /////     val wallNow = now
+            // TODO put in own class PerfCounters, method collect /////     val wallDelta = wallNow - cpuLastWall
+            // TODO put in own class PerfCounters, method collect /////     val cpuDelta = procNow - cpuLastProc
+            // TODO put in own class PerfCounters, method collect /////     if (wallDelta > 0) {
+            // TODO put in own class PerfCounters, method collect /////         val cores = osBean.availableProcessors.toDouble().coerceAtLeast(1.0)
+            // TODO put in own class PerfCounters, method collect /////         cpuPercent = (cpuDelta.toDouble() / wallDelta.toDouble()) * 100.0 / cores
+            // TODO put in own class PerfCounters, method collect /////     }
+            // TODO put in own class PerfCounters, method collect /////     cpuLastWall = wallNow
+            // TODO put in own class PerfCounters, method collect /////     cpuLastProc = procNow
+            // TODO put in own class PerfCounters, method collect /////     cpuMeter.collect(cpuPercent.roundToInt(), frame)
+            // TODO put in own class PerfCounters, method collect ///// }
             val du = (Instant.now().nano.toLong() - d0)/1000/1000
             if(du<25) {
                 // sleep(25.toLong() - du)
