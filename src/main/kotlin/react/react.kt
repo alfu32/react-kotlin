@@ -3,6 +3,9 @@ package react
 import react.renderer.AnsiCanvasRenderer
 import react.renderer.CanvasRenderer
 import java.time.Instant
+import java.lang.management.ManagementFactory
+import com.sun.management.OperatingSystemMXBean
+import kotlin.math.roundToInt
 
 private fun applyStyles(dom: DOMNode, sheet: StyleSheet?): DOMNode {
     val resolvedStyle = StyleSet()
@@ -91,6 +94,28 @@ class HookContext(private val instance: ComponentInstance) {
     }
 }
 
+class Meter(
+    private val name: String,
+    private val unit: String,
+    private val timing: Int = 1024
+){
+    private var minVal: Int = Int.MAX_VALUE
+    private var maxVal: Int = Int.MIN_VALUE
+    private var avgVal: Double = 0.toDouble()
+
+    fun collect(value: Int, frame: Long) {
+        if (value < minVal) minVal = value
+        if (value > maxVal) maxVal = value
+        if (frame % timing.toLong() == 0L) {
+            val buckets = frame / timing
+            avgVal = ((avgVal * buckets) + value.toDouble()) / (buckets + 1).coerceAtLeast(1)
+        }
+    }
+
+    override fun toString(): String =
+        "%s[%4d,%4d,%4d]%s".format(name, minVal, avgVal.roundToInt(), maxVal, unit)
+}
+
 @Suppress("UNCHECKED_CAST")
 inline fun <T> renderComponent(
     tree: ComponentTreeManager,
@@ -143,6 +168,28 @@ private fun findTopmostHit(node: DOMNode, event: UIEvent, parentX: Int, parentY:
     return if (x in x1 until x2 && y in y1 until y2) node else null
 }
 
+private fun collectHitNodes(node: DOMNode, event: UIEvent, parentX: Int, parentY: Int, hits: MutableList<DOMNode>) {
+    val x = event.x ?: return
+    val y = event.y ?: return
+
+    val left = node.style.left ?: 0
+    val top = node.style.top ?: 0
+    val right = node.style.right ?: 0
+    val bottom = node.style.bottom ?: 0
+
+    val x1 = parentX + left
+    val y1 = parentY + top
+    val x2 = parentX + right + 1
+    val y2 = parentY + bottom + 1
+
+    for (child in node.children) {
+        collectHitNodes(child, event, x1, y1, hits)
+    }
+    if (x in x1 until x2 && y in y1 until y2 && node.id != null) {
+        hits.add(node)
+    }
+}
+
 private fun clearFocus(node: DOMNode) {
     node.hasFocus = false
     node.children.forEach { clearFocus(it) }
@@ -189,8 +236,10 @@ fun dispatchEvent(root: DOMNode, event: UIEvent) {
     dispatchEventToDom(root, event, 0, 0)
 }
 
-fun renderDomTree(renderer: CanvasRenderer, dom: DOMNode, parentX: Int = 0, parentY: Int = 0) {
+fun renderDomTree(renderer: CanvasRenderer, dom: DOMNode, parentX: Int = 0, parentY: Int = 0): Int {
+    var count = 0
     if (dom.visible) {
+        count++
         val left = dom.style.left ?: 0
         val top = dom.style.top ?: 0
         val right = dom.style.right ?: 0
@@ -230,8 +279,9 @@ fun renderDomTree(renderer: CanvasRenderer, dom: DOMNode, parentX: Int = 0, pare
         }
 
         for (child in dom.children)
-            renderDomTree(renderer, child, x1, y1)
+            count += renderDomTree(renderer, child, x1, y1)
     }
+    return count
 }
 
 private fun enterRawMode(): String? {
@@ -263,6 +313,17 @@ fun runApp(
     val tree = ComponentTreeManager()
     var lastDom: DOMNode = DOMNode("empty",)
     var focusedId: String? = null
+    var lastHitIds: List<String> = emptyList()
+    var fps: Double = 0.0
+    var fpsWindowStart = System.nanoTime()
+    var fpsFrameCount = 0
+    val osBean = ManagementFactory.getOperatingSystemMXBean() as? OperatingSystemMXBean
+    var cpuPercent = 0.0
+    var cpuLastWall = System.nanoTime()
+    var cpuLastProc = osBean?.processCpuTime ?: 0L
+    val fpsMeter = Meter("FPS", "f/s", 1024)
+    val memMeter = Meter("Mem", "MB", 1024)
+    val cpuMeter = Meter("CPU", "%", 1024)
 
     val styleSheet = StyleSheet.loadFromFiles(styleFiles)
 
@@ -280,6 +341,7 @@ fun runApp(
         while (renderer.isRunning()) {
             val d0 = Instant.now().nano.toLong()
             frame += 1
+            fpsFrameCount++
 
             // Render frame
             tree.beginFrame()
@@ -291,7 +353,29 @@ fun runApp(
             lastDom = root
 
             renderer.clear()
-            renderDomTree(renderer, root)
+            val nodeCount = renderDomTree(renderer, root)
+            val rt = Runtime.getRuntime()
+            val usedMb = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024)
+            memMeter.collect(usedMb.toInt(), frame)
+            val hud = buildString {
+                append(fpsMeter.toString())
+                append(" | Nodes:")
+                append(nodeCount.toString().padStart(4, ' '))
+                append(" | ")
+                append(memMeter.toString())
+                append(" | ")
+                append(cpuMeter.toString())
+            }.padEnd(100)
+            val hudStartX = (renderer.cols() - hud.length).coerceAtLeast(0)
+            val hitsText = "Hits: [${lastHitIds.joinToString(",")}]".padEnd(100)
+            val hitsStartX = (renderer.cols() - hitsText.length).coerceAtLeast(100)
+            val hitsY = (renderer.rows() - 1).coerceAtLeast(1)
+            renderer.setBackgroundColor(180,180,180)
+            renderer.setColor(22,22,22)
+            val mx = hudStartX.coerceAtMost(hitsStartX)
+            renderer.drawText(mx-1, hitsY-1, hud)
+            renderer.drawText(mx-1, hitsY, hitsText)
+            renderer.resetAttributes()
             renderer.flush()
 
             // Poll a single event (non-blocking) after rendering
@@ -302,10 +386,15 @@ fun runApp(
                 } else {
                     dispatchEventToDom(lastDom, event, 0, 0)
                     if (event.x != null && event.y != null) {
-                        val hit = findTopmostHit(lastDom, event, 0, 0)
-                        if (hit?.id != null) {
-                            focusedId = hit.id
+                        val hitNodes = mutableListOf<DOMNode>()
+                        collectHitNodes(lastDom, event, 0, 0, hitNodes)
+                        lastHitIds = hitNodes.mapNotNull { it.id }
+                        val topmost = hitNodes.firstOrNull()
+                        if (topmost?.id != null) {
+                            focusedId = topmost.id
                         }
+                    } else {
+                        lastHitIds = emptyList()
                     }
                 }
             } else {
@@ -319,10 +408,31 @@ fun runApp(
             if (maxFrames != null && frame.toULong() >= maxFrames) {
                 renderer.requestExit()
             }
+            val now = System.nanoTime()
+            if (now - fpsWindowStart >= 1_000_000_000L) {
+                fps = fpsFrameCount.toDouble() * 1_000_000_000.0 / (now - fpsWindowStart).toDouble()
+                fpsFrameCount = 0
+                fpsWindowStart = now
+                fpsMeter.collect(fps.roundToInt(), frame)
+            }
+            if (osBean != null) {
+                val procNow = osBean.processCpuTime
+                val wallNow = now
+                val wallDelta = wallNow - cpuLastWall
+                val cpuDelta = procNow - cpuLastProc
+                if (wallDelta > 0) {
+                    val cores = osBean.availableProcessors.toDouble().coerceAtLeast(1.0)
+                    cpuPercent = (cpuDelta.toDouble() / wallDelta.toDouble()) * 100.0 / cores
+                }
+                cpuLastWall = wallNow
+                cpuLastProc = procNow
+                cpuMeter.collect(cpuPercent.roundToInt(), frame)
+            }
             val du = (Instant.now().nano.toLong() - d0)/1000/1000
             if(du<25) {
                 // sleep(25.toLong() - du)
             }
+
         }
         appContext.onExit()
     } catch (x: Throwable) {
