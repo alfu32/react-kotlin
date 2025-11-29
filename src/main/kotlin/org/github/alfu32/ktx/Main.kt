@@ -19,117 +19,10 @@ import java.io.File
 import java.time.LocalTime
 import kotlin.String
 
-
-/*
-===============================================================
-  DATA TYPES
-===============================================================
-*/
-
-
-/*
-===============================================================
-  TEXT BUFFER IMPLEMENTATION
-===============================================================
-*/
-//@file:Suppress("UNCHECKED_CAST")
-
-/* =====================================================================
-   UNIFIED EVENT STRUCTURE
-   ===================================================================== */
-
-/* =====================================================================
-   STYLE SYSTEM (as provided by Uuu)
-   ===================================================================== */
-
-/* =====================================================================
-   CANVAS RENDERER INTERFACE WITH EVENT POLLING
-   ===================================================================== */
-
-/* =====================================================================
-   Minimal no-op renderer to make the main loop runnable without a real VT backend.
-   ===================================================================== */
-
-/* =====================================================================
-   ANSI Terminal Renderer
-
-This renderer:
-
- - Uses ANSI escape sequences
- - Assumes raw mode is enabled (you’ll handle this outside—Termux/Linux)
- - Reads stdin for key and mouse events
- - Supports SGR text formatting
- - Supports RGB foreground/background
- - Draws rectangles and text
- - Maintains no back buffer (your framework controls redraw)
-
-Note: Terminal mouse reporting requires enabling Mouse Tracking Mode.
-You’ll need to enable it once, outside this class:
-
-```
-    print("\u001b[?1000h") // Mouse tracking on (press/release)
-    print("\u001b[?1003h") // Mouse motion tracking
-```
-
-    And raw mode for stdin.
-   ===================================================================== */
-
-/* =====================================================================
-   StringSnapshotRenderer (for testing)
-
-This renderer:
-
- - Performs no ANSI output
- - Maintains an internal 2D character buffer (grid)
- - Records all drawRect/drawText operations
- - Ignores colors/bold/italic/etc.
- - Does not generate events
- - Provides .snapshot() to retrieve textual output
-
-Made for clean, deterministic tests.
-   ===================================================================== */
-
-/* =====================================================================
-   COMPONENT SYSTEM (hooks, instances)
-   ===================================================================== */
-
-/* =====================================================================
-   EVENT DISPATCH + HIT TESTING + FOCUS LOGIC
-   ===================================================================== */
-
-
-// private fun findNodeById(node: DOMNode, id: String): DOMNode? {
-//     if (node.id == id) return node
-//     for (child in node.children) {
-//         val found = findNodeById(child, id)
-//         if (found != null) return found
-//     }
-//     return null
-// }
-
-/* =====================================================================
-   RENDERING ENGINE
-   ===================================================================== */
-
-/* =====================================================================
-   SAMPLE COMPONENTS
-   ===================================================================== */
-
-
-/* =====================================================================
-   APP COMPONENTS
-   ===================================================================== */
-
-
-/* =====================================================================
-   GIT PANEL COMPONENT (read-only actions + layout scaffolding)
-   ===================================================================== */
-
 /* =====================================================================
    APP DEMO (header + sidebar + splitter + content + status)
    Uses HookContext.useState for per-instance state.
    ===================================================================== */
-
 fun App(tree: ComponentTreeManager, cols: Int, rows: Int): DOMNode =
     renderComponent(tree) {
         // --- Global-ish app state stored in hook slots
@@ -379,5 +272,4 @@ fun main(args: Array<String>) {
         onError = { println(it) }
     }
 }
-
 

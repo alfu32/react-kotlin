@@ -3,6 +3,9 @@ package org.github.alfu32.ktx.components
 import react.ComponentTreeManager
 import react.DOMNode
 
+/* =====================================================================
+   SAMPLE COMPONENTS
+   ===================================================================== */
 fun Counters(tree: ComponentTreeManager, values: List<Int>): DOMNode =
     DOMNode(
         tag = "list-counter-container",

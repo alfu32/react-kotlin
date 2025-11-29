@@ -1,5 +1,10 @@
 package org.github.alfu32.ktx
 
+import java.net.URLConnection
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
+
 /*
 ===============================================================
   FILE TREE INTERFACE
@@ -27,7 +32,22 @@ data class FileTreeEntry(
     val padding: Int,
     val fullPath: String,
     val isOpen: Boolean
-)
+) {
+
+    fun detectType(): String? {
+        val path: Path = Path.of(fullPath)
+        // OS / JDK provider
+        val bySys = Files.probeContentType(path)?.let { return it }
+
+        // By name
+        val byName = URLConnection.guessContentTypeFromName(path.toString())?.let { return it }
+        val byBinary= Files.newInputStream(path).use { input ->
+            URLConnection.guessContentTypeFromStream(input)
+        }?.let { return it }
+
+        return null
+    }
+}
 
 class FileTreeItem(
     val name: String,

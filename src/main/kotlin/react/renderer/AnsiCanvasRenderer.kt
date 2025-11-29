@@ -5,6 +5,29 @@ import react.runCommand
 import java.io.Flushable
 import java.io.InputStream
 
+/* =====================================================================
+   ANSI Terminal Renderer
+
+This renderer:
+
+ - Uses ANSI escape sequences
+ - Assumes raw mode is enabled (you’ll handle this outside—Termux/Linux)
+ - Reads stdin for key and mouse events
+ - Supports SGR text formatting
+ - Supports RGB foreground/background
+ - Draws rectangles and text
+ - Maintains no back buffer (your framework controls redraw)
+
+Note: Terminal mouse reporting requires enabling Mouse Tracking Mode.
+You’ll need to enable it once, outside this class:
+
+```
+    print("\u001b[?1000h") // Mouse tracking on (press/release)
+    print("\u001b[?1003h") // Mouse motion tracking
+```
+
+    And raw mode for stdin.
+   ===================================================================== */
 class AnsiCanvasRenderer(
     private val input: InputStream = System.`in`,
     private val output: Appendable = System.out,

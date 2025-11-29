@@ -3,6 +3,9 @@ package react
 import java.io.File
 import kotlin.collections.iterator
 
+/* =====================================================================
+   STYLE SYSTEM (as provided by Uuu)
+   ===================================================================== */
 class StyleSheet(
     val defaultStyle: StyleSet = StyleSet(),
     val rules: Map<String, StyleSet> = emptyMap()

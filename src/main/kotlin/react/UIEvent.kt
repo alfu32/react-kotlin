@@ -1,5 +1,8 @@
 package react
 
+/* =====================================================================
+   UNIFIED EVENT STRUCTURE
+   ===================================================================== */
 data class UIEvent(
     val kind: String,           // e.g. "mouse_down", "key_down", "resize"
     val x: Int? = null,         // mouse coordinates

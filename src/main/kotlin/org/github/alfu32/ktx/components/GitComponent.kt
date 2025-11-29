@@ -11,6 +11,9 @@ import java.io.File
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+/* =====================================================================
+   GIT PANEL COMPONENT (read-only actions + layout scaffolding)
+   ===================================================================== */
 fun GitComponent(
     tree: ComponentTreeManager,
     workspaceRoot: String,

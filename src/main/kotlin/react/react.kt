@@ -23,6 +23,9 @@ private fun applyStyles(dom: DOMNode, sheet: StyleSheet?): DOMNode {
     return dom.copy(style = resolvedStyle, children = styledChildren)
 }
 
+/* =====================================================================
+   COMPONENT SYSTEM (hooks, instances)
+   ===================================================================== */
 data class ComponentInstance(
     val key: String?,
     val callSiteId: Int,
@@ -101,6 +104,9 @@ inline fun <T> renderComponent(
     return result
 }
 
+/* =====================================================================
+   EVENT DISPATCH + HIT TESTING + FOCUS LOGIC
+   ===================================================================== */
 private fun hitTest(x: Int, y: Int, node: DOMNode, parentX: Int, parentY: Int): Boolean {
     val left   = node.style.left   ?: 0
     val top    = node.style.top    ?: 0
@@ -244,6 +250,9 @@ private fun restoreStty(state: String?) {
     runCommand("sh", "-c", cmd)
 }
 
+/* =====================================================================
+   RENDERING ENGINE
+   ===================================================================== */
 fun runApp(
     renderer: CanvasRenderer,
     maxFrames: ULong? = null,
@@ -343,4 +352,3 @@ fun runCommand(vararg cmd: String): String? = try {
         .start()
         .inputStream.bufferedReader().use { it.readText() }
 } catch (_: Exception) { null }
-

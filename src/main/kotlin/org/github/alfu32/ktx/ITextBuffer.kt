@@ -53,6 +53,11 @@ interface ITextBuffer {
     fun viewportSlice(view: EditorViewport, gutterWidth: Int): ViewportSlice
 }
 
+/*
+===============================================================
+  DATA TYPES
+===============================================================
+*/
 data class Position(var line: Int = 0, var column: Int = 0)
 
 data class SelectionRange(val start: Position, val end: Position)

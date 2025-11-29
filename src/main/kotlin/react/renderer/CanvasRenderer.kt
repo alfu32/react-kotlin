@@ -2,6 +2,9 @@ package react.renderer
 
 import react.UIEvent
 
+/* =====================================================================
+   CANVAS RENDERER INTERFACE WITH EVENT POLLING
+   ===================================================================== */
 interface CanvasRenderer {
     fun cols(): Int
     fun rows(): Int

@@ -2,6 +2,9 @@ package react.renderer
 
 import react.UIEvent
 
+/* =====================================================================
+   Minimal no-op renderer to make the main loop runnable without a real VT backend.
+   ===================================================================== */
 class NoopRenderer(
     private val cols: Int = 120,
     private val rows: Int = 40

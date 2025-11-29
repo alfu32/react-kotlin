@@ -3,6 +3,20 @@ package react.renderer
 import react.UIEvent
 import kotlin.text.iterator
 
+/* =====================================================================
+   StringSnapshotRenderer (for testing)
+
+This renderer:
+
+ - Performs no ANSI output
+ - Maintains an internal 2D character buffer (grid)
+ - Records all drawRect/drawText operations
+ - Ignores colors/bold/italic/etc.
+ - Does not generate events
+ - Provides .snapshot() to retrieve textual output
+
+Made for clean, deterministic tests.
+   ===================================================================== */
 class StringSnapshotRenderer(
     private val cols: Int = 120,
     private val rows: Int = 40
