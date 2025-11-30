@@ -53,7 +53,7 @@ fun VerticalScrollBar(
         id = "hit-area",
         tag = "invisible",
         style = StyleSet.Companion.parse(
-            "left:${if (dragging) -230 else 0}; top:${if (dragging) -230 else indicatorTop}; right:${if (dragging) 230 else vw}; bottom:${if (dragging) 150 else indicatorTop + indicatorHeight - 1}"
+            "z-index:99999;left:${if (dragging) -230 else -1}; top:${if (dragging) -230 else indicatorTop}; right:${if (dragging) 230 else vw}; bottom:${if (dragging) 150 else indicatorTop + indicatorHeight - 1}"
         ),
         onMouseMove = { ev ->
             if (!dragging) return@DOMNode
@@ -61,9 +61,10 @@ fun VerticalScrollBar(
             val dy = y - dragStartY
             val newTop = dragStartTop + dy
             onScrollTo(toOffset(newTop))
+            // ev.stopPropagation()
         },
         onMouseUp = { ev -> setDragging(false) },
-        visible = false
+        visible = dragging
     )
 
     val track = DOMNode(
@@ -75,7 +76,7 @@ fun VerticalScrollBar(
             val targetTop = (y - indicatorHeight / 2).coerceIn(0, trackRoom)
             onScrollTo(toOffset(targetTop))
         },
-        children = listOf(hitArea, indicator),
+        children = listOf( hitArea,indicator,),
     )
 
     DOMNode(

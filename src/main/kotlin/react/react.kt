@@ -442,7 +442,7 @@ fun runApp(
 
             // Debug toggle + panel drawing
             val toggleLabel = "Debug"
-            val toggleX = (renderer.cols() - toggleLabel.length).coerceAtLeast(0)
+            val toggleX = (renderer.cols() - toggleLabel.length).coerceAtLeast(100)
             val toggleY = (renderer.rows() - 1 - (if(debugVisible) -0 else 0)).coerceAtLeast(0)
             try{
                 if (debugVisible) {
@@ -450,7 +450,8 @@ fun runApp(
                 }
                 Draw(renderer) {
                     perf.render(renderer, nodeCount, lastHitIds, debugVisible)
-                    text(toggleX, toggleY, toggleLabel, "bg:#FF5500;fg#eeeeee")
+                    renderer.setColor(190,25,10)
+                    renderer.drawText(toggleX, toggleY, toggleLabel,)
                 }
             }catch(e:Exception){}
             renderer.flush()
