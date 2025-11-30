@@ -1,5 +1,7 @@
 package react
 
+import kotlin.text.get
+
 data class StyleSet(
     var top: Int? = null,
     var left: Int? = null,
@@ -11,6 +13,7 @@ data class StyleSet(
     var borderSet: String? = null,
     var lineSet: String? = null
 ) {
+    var extended = mutableMapOf<String,String>()
     var styleName=""
     fun mergeFrom(src: StyleSet) {
         if (src.top != null) top = src.top
@@ -22,13 +25,21 @@ data class StyleSet(
         if (src.textDecoration != null) textDecoration = src.textDecoration
         if (src.borderSet != null) borderSet = src.borderSet
         if (src.lineSet != null) lineSet = src.lineSet
+        src.extended.forEach { (key,value) ->
+            if(src[key] != null) extended[key] = value
+        }
     }
 
     fun boundingBox() = ContentBox(top ?: 0, left ?: 0, right ?: 0, bottom ?: 0)
 
     fun merged(src: StyleSet): StyleSet =
         this.copy().also { it.mergeFrom(src) }
-
+    operator fun plus(other: StyleSet): StyleSet {
+        return this.merged(other)
+    }
+    operator fun get(key: String): String? {
+        return this.extended[key]
+    }
     companion object {
         fun parse(def: String): StyleSet {
             val style = StyleSet()
@@ -41,7 +52,7 @@ data class StyleSet(
                 val key = parts[0].trim()
                 val valueRaw = parts[1].trim()
                 if (valueRaw.isEmpty() || valueRaw == "none") continue
-
+                style.extended[key] = valueRaw
                 when (key) {
                     "top"    -> style.top = valueRaw.toIntOrNull()
                     "left"   -> style.left = valueRaw.toIntOrNull()
@@ -58,13 +69,8 @@ data class StyleSet(
         }
 
         private fun parseColor(raw: String): Color? {
-            var s = raw.trim()
-            if (s.startsWith("#")) s = s.substring(1)
-            if (s.length != 6) return null
-            val r = s.substring(0, 2).toIntOrNull(16) ?: return null
-            val g = s.substring(2, 4).toIntOrNull(16) ?: return null
-            val b = s.substring(4, 6).toIntOrNull(16) ?: return null
-            return Color(r, g, b)
+            return Color.from(raw)
         }
     }
 }
+

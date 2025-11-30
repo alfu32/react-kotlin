@@ -261,8 +261,8 @@ fun main(args: Array<String>) {
         renderer = renderer,
         maxFrames = maxFrames?.toULong(),
         styleFiles = (listOf("styles/app.css") + args),
-    ) { tree: ComponentTreeManager ->
-        App(tree, renderer.cols(), renderer.rows())
+    ) { tree: ComponentTreeManager, cols: Int, rows: Int ->
+        App(tree, cols, rows)
     }.apply {
         onExit = {
             when (renderer) {
@@ -272,4 +272,3 @@ fun main(args: Array<String>) {
         onError = { println(it) }
     }
 }
-

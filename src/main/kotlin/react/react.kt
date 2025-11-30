@@ -5,6 +5,7 @@ import react.renderer.CanvasRenderer
 import java.time.Instant
 import java.lang.management.ManagementFactory
 import com.sun.management.OperatingSystemMXBean
+import react.renderer.Draw
 import kotlin.math.roundToInt
 
 private fun applyStyles(dom: DOMNode, sheet: StyleSheet?): DOMNode {
@@ -101,15 +102,28 @@ class Meter(
 ){
     private var minVal: Int = Int.MAX_VALUE
     private var maxVal: Int = Int.MIN_VALUE
-    private var avgVal: Double = 0.toDouble()
+    private var avgVal: Double = 0.0
+    private var samples: Long = 0
 
     fun collect(value: Int, frame: Long) {
+        samples++
         if (value < minVal) minVal = value
         if (value > maxVal) maxVal = value
-        if (frame % timing.toLong() == 0L) {
-            val buckets = frame / timing
-            avgVal = ((avgVal * buckets) + value.toDouble()) / (buckets + 1).coerceAtLeast(1)
+
+        // Simple running average across all collected samples.
+        val prev = samples - 1
+        avgVal = if (prev <= 0) {
+            value.toDouble()
+        } else {
+            ((avgVal * prev) + value.toDouble()) / samples.toDouble()
         }
+    }
+    fun percentageInt():Int{
+        if (maxVal == minVal) {
+            return 1
+        }
+        val avg = avgVal.roundToInt()
+        return avg.minus(minVal).times(100).div(maxVal.minus(minVal)).coerceAtLeast(1).coerceAtMost(100)
     }
 
     override fun toString(): String =
@@ -129,7 +143,7 @@ private class PerfCounters(
     private var cpuLastWall = System.nanoTime()
     private var cpuLastProc = osBean?.processCpuTime ?: 0L
 
-    private val fpsMeter = Meter("FPS", "f/s", timing)
+    private val fpsMeter = Meter("FPS", "f/s", 1)
     private val memMeter = Meter("Mem", "MB", timing)
     private val cpuMeter = Meter("CPU", "%", timing)
 
@@ -163,24 +177,35 @@ private class PerfCounters(
         }
     }
 
-    fun renderHud(renderer: CanvasRenderer, nodeCount: Int, hits: List<String>) {
-        val hud = buildString {
-            append("FPS:")
-            append(String.format("%4.1f", fps))
-            append(" | Nodes:")
-            append(nodeCount.toString().padStart(4, ' '))
-            append(" | ")
-            append(memMeter.toString())
-            append(" | ")
-            append(cpuMeter.toString())
+    fun render(renderer: CanvasRenderer, nodeCount: Int, hits: List<String>, visible: Boolean) {
+        if (!visible) return
+        val fps = fpsMeter.toString()
+        val node = nodeCount.toString().padStart(4, ' ')
+        val mem = memMeter.toString()
+        val cpu = cpuMeter.toString()
+        val y = (renderer.rows() - 1).coerceAtLeast(1)-1
+        var x = 0
+        // Draw(renderer){
+        //     text(0,y, "$fps $node $mem $cpu".padEnd(renderer.cols()),"bg:#444400;fg:#aaaaaa")
+        //     text(0,y+1, hits.joinToString(",").padEnd(renderer.cols()),"bg:#DDDD22;fg:#aaaaaa")
+        // }
+        Draw(renderer){
+            try{
+                meter(x, y, fpsMeter.percentageInt(), fps+"  ", "bg:#333333;fg:#aaaaaa")
+            }catch (e: Exception){}
+            x += fps.length + 1
+            try{
+                meter(x, y, memMeter.percentageInt(), mem+"  ", "bg:#333333;fg:#aaaaaa")
+            }catch (e: Exception){}
+            x += mem.length + 1
+            try{
+                meter(x, y, cpuMeter.percentageInt(), cpu+"  ", "bg:#333333;fg:#aaaaaa")
+            }catch (e: Exception){}
+            x += cpu.length + 1
+            // rect(ContentBox(y,0,y+1,renderer.cols()))
+            text(x, y, " Nodes: $node".padEnd(renderer.cols()), "bg:#333333;fg:#aaaaaa")
+            text(0,y+1, hits.joinToString(",").padEnd(renderer.cols()),"bg:#333333;fg:#aaaaaa")
         }
-        val hudStartX = (renderer.cols() - hud.length).coerceAtLeast(0)
-        renderer.drawText(hudStartX, 0, hud)
-
-        val hitsText = "Hits: [${hits.joinToString(",")}]"
-        val hitsStartX = (renderer.cols() - hitsText.length).coerceAtLeast(0)
-        val hitsY = (renderer.rows() - 1).coerceAtLeast(0)
-        renderer.drawText(hitsStartX, hitsY, hitsText)
     }
 }
 
@@ -375,7 +400,7 @@ fun runApp(
     renderer: CanvasRenderer,
     maxFrames: ULong? = null,
     styleFiles: List<String> = emptyList(),
-    rootFn: (ComponentTreeManager) -> DOMNode
+    rootFn: (ComponentTreeManager, Int, Int) -> DOMNode
 ) : AppContext {
     val appContext: AppContext = AppContext()
     val tree = ComponentTreeManager()
@@ -383,6 +408,7 @@ fun runApp(
     var focusedId: String? = null
     var lastHitIds: List<String> = emptyList()
     val perf = PerfCounters()
+    var debugVisible = false
 
     val styleSheet = StyleSheet.loadFromFiles(styleFiles)
 
@@ -403,7 +429,8 @@ fun runApp(
 
             // Render frame
             tree.beginFrame()
-            val rawRoot = rootFn(tree)
+            val effectiveRows = (renderer.rows() - if (debugVisible) 2 else 0).coerceAtLeast(1)
+            val rawRoot = rootFn(tree, renderer.cols(), effectiveRows)
             clearFocus(rawRoot)
             focusedId?.let { setFocus(rawRoot, it) }
             val root = applyStyles(rawRoot, styleSheet)
@@ -412,13 +439,33 @@ fun runApp(
 
             renderer.clear()
             val nodeCount = renderDomTree(renderer, root)
-            perf.collect(frame)
-            perf.renderHud(renderer, nodeCount, lastHitIds)
+
+            // Debug toggle + panel drawing
+            val toggleLabel = "Debug"
+            val toggleX = (renderer.cols() - toggleLabel.length).coerceAtLeast(0)
+            val toggleY = (renderer.rows() - 1 - (if(debugVisible) -0 else 0)).coerceAtLeast(0)
+            try{
+                if (debugVisible) {
+                    perf.collect(frame)
+                }
+                Draw(renderer) {
+                    perf.render(renderer, nodeCount, lastHitIds, debugVisible)
+                    text(toggleX, toggleY, toggleLabel, "bg:#FF5500;fg#eeeeee")
+                }
+            }catch(e:Exception){}
             renderer.flush()
 
             // Poll a single event (non-blocking) after rendering
             val event = renderer.tryPollEvent()
             if (event != null) {
+                if (event.kind == "mouse_down" && event.x != null && event.y != null) {
+                    val toggleX = renderer.cols() - 5
+                    val toggleY = renderer.rows() - 1
+                    if (event.x >= toggleX && event.y >= toggleY) {
+                        debugVisible = !debugVisible
+                        continue
+                    }
+                }
                 if ((event.key == "Esc") || (event.ctrl && event.key == "q")|| (event.key == "~")) {
                     renderer.requestExit()
                 } else {
