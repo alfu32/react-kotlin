@@ -24,6 +24,8 @@ fun Textarea(
     onKeyUp: UIEventHandler? = null,
     key: String? = null
 ): DOMNode = renderComponent(tree, key) {
+    val (isScrolling, setIsScrolling) = useState { 0 }
+    val (scrollOffset, setScrollOffset) = useState { 0 }
     val left = style.left ?: 0
     val right = style.right ?: left
     val totalWidth = (right - left).coerceAtLeast(1)
@@ -34,7 +36,6 @@ fun Textarea(
     val contentWidth = (totalWidth).coerceAtLeast(1)
     val viewportHeight = totalHeight
 
-    val (scrollOffset, setScrollOffset) = useState { 0 }
     val totalLines = buffer.text().split('\n').size
     val maxOffset = (totalLines - viewportHeight).coerceAtLeast(0)
     val clampedOffset = scrollOffset.coerceIn(0, maxOffset)
@@ -84,10 +85,11 @@ fun Textarea(
     val scrollbar = VerticalScrollBar(
         parent="$parent>textarea",
         tree = tree,
-        style = StyleSet.Companion.parse("left:${0}; top:0; right:${contentWidth + 1}; bottom:${viewportHeight - 1}"),
+        style = StyleSet.Companion.parse("left:${contentWidth + 1}; top:0; right:${contentWidth + 1}; bottom:${viewportHeight - 1}"),
         contentHeight = totalLines.coerceAtLeast(viewportHeight),
         scrollOffset = clampedOffset,
-        onScrollTo = { off -> setScrollOffset(off.coerceIn(-3, maxOffset + 5)) }
+        onScrollTo = { off -> setScrollOffset(off.coerceIn(-3, maxOffset + 5)) },
+        onScrolling = {st -> },
     )
 
     val cursorFg = style.bg ?: Color(0, 0, 0)

@@ -128,10 +128,11 @@ fun GitComponent(
     val commitScrollbar = VerticalScrollBar(
         parent="commitTextBox",
         tree = tree,
-        style = StyleSet.Companion.parse("left:${0}; top:${commitsTop}; right:${contentWidth + 1}; bottom:${safeHeight - 1}"),
+        style = StyleSet.Companion.parse("left:${contentWidth + 1}; top:${commitsTop}; right:${contentWidth + 1}; bottom:${safeHeight - 1}"),
         contentHeight = commitLines.size.coerceAtLeast(commitViewportHeight),
         scrollOffset = clampedCommitScroll,
-        onScrollTo = { newOffset -> setCommitScroll(newOffset.coerceIn(0, maxCommitOffset)) }
+        onScrollTo = { newOffset -> setCommitScroll(newOffset.coerceIn(0, maxCommitOffset)) },
+        onScrolling = { state ->  },
     )
 
     DOMNode(

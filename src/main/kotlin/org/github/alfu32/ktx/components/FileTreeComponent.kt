@@ -87,10 +87,11 @@ fun FileTreeComponent(
     val scrollbar = VerticalScrollBar(
         parent=tag,
         tree = tree,
-        style = StyleSet.Companion.parse("left:${0}; top:0; right:${viewportWidth}; bottom:${safeHeight - 1}"),
+        style = StyleSet.Companion.parse("left:${viewportWidth}; top:0; right:${viewportWidth}; bottom:${safeHeight - 1}"),
         contentHeight = entries.size.coerceAtLeast(viewportHeight),
         scrollOffset = clampedScroll,
-        onScrollTo = { off -> setScrollOffset(off.coerceIn(0, maxOffset)) }
+        onScrollTo = { off -> setScrollOffset(off.coerceIn(0, maxOffset)) },
+        onScrolling = { state ->  },
     )
 
     DOMNode(
