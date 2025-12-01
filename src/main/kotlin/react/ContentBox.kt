@@ -34,4 +34,8 @@ class ContentBox(
         right+=offsetX
         return this
     }
+
+    override fun toString(): String {
+        return "[X$left-${right}xY$top-$bottom]"
+    }
 }

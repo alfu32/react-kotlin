@@ -1,28 +1,33 @@
 package react
 
 data class DOMNode(
-    val tag: String,
-    val text: String? = null,
-    val styleId: String? = null,
-    val style: StyleSet = StyleSet(),
-    val id: String? = null,
+    var tag: String,
+    var text: String? = null,
+    var styleId: String? = null,
+    var style: StyleSet = StyleSet(),
+    var id: String? = null,
     var hasFocus: Boolean = false,
 
     // Event callbacks — all get UIEvent
-    val onMouseDown: UIEventHandler? = null,
-    val onMouseUp: UIEventHandler? = null,
-    val onMouseMove: UIEventHandler? = null,
-    val onMouseScroll: UIEventHandler? = null,
-    val onKeyDown: UIEventHandler? = null,
-    val onKeyUp: UIEventHandler? = null,
-    val onFocusGained: UIEventHandler? = null,
-    val onFocusLost: UIEventHandler? = null,
-    val onResize: UIEventHandler? = null,
+    var onMouseDown: UIEventHandler? = null,
+    var onMouseUp: UIEventHandler? = null,
+    var onMouseMove: UIEventHandler? = null,
+    var onMouseScroll: UIEventHandler? = null,
+    var onKeyDown: UIEventHandler? = null,
+    var onKeyUp: UIEventHandler? = null,
+    var onFocusGained: UIEventHandler? = null,
+    var onFocusLost: UIEventHandler? = null,
+    var onResize: UIEventHandler? = null,
 
-    val children: List<DOMNode> = emptyList(),
-    val key: String? = "",
-    val visible: Boolean = true,
+    var children: List<DOMNode> = emptyList(),
+    var key: String? = "",
+    var visible: Boolean = true,
 ) {
+    fun offset(x:Int, y:Int): DOMNode {
+        this.style.offset(x,y)
+        this.children.forEach { it.offset(x,y) }
+        return this
+    }
     fun boundingBox() = style.boundingBox()
     fun contains(node: DOMNode) = boundingBox().contains(node.boundingBox())
 

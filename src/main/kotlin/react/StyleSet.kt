@@ -29,8 +29,23 @@ data class StyleSet(
             if(src[key] != null) extended[key] = value
         }
     }
+    fun offset(x:Int, y:Int): StyleSet {
+        if(this.top != null) {
+            this.top = this.top!! + y
+        }
+        if(this.left != null) {
+            this.left = this.left!! + x
+        }
+        if(this.bottom != null) {
+            this.bottom = this.bottom!! + y
+        }
+        if(this.right != null) {
+            this.right = this.right!! + x
+        }
+        return this
+    }
 
-    fun boundingBox() = ContentBox(top ?: 0, left ?: 0, right ?: 0, bottom ?: 0)
+    fun boundingBox() = ContentBox(top=top ?: 0, left=left ?: 0, right=right ?: 0, bottom=bottom ?: 0)
 
     fun merged(src: StyleSet): StyleSet =
         this.copy().also { it.mergeFrom(src) }

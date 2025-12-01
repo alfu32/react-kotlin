@@ -177,7 +177,7 @@ private class PerfCounters(
         }
     }
 
-    fun render(renderer: CanvasRenderer, nodeCount: Int, hits: List<String>, visible: Boolean) {
+    fun render(renderer: CanvasRenderer, nodeCount: Int, hits: List<DOMNode>, visible: Boolean) {
         if (!visible) return
         val fps = fpsMeter.toString()
         val node = nodeCount.toString().padStart(4, ' ')
@@ -204,7 +204,11 @@ private class PerfCounters(
             x += cpu.length + 1
             // rect(ContentBox(y,0,y+1,renderer.cols()))
             text(x, y, " Nodes: $node".padEnd(renderer.cols()), "bg:#333333;fg:#aaaaaa")
-            text(0,y+1, hits.joinToString(",").padEnd(renderer.cols()),"bg:#333333;fg:#aaaaaa")
+            text(0,y+1, hits
+                .joinToString(","){node ->
+                    "${node.id}${node.boundingBox()}"
+                }
+                .padEnd(renderer.cols()),"bg:#333333;fg:#aaaaaa")
         }
     }
 }
@@ -369,6 +373,10 @@ fun renderDomTree(renderer: CanvasRenderer, dom: DOMNode, parentX: Int = 0, pare
                 renderer.drawText(x1, yy, line)
                 yy++
             }
+            // renderer.setBackgroundColor(33,33,33)
+            // renderer.setColor(225,33,33)
+            // renderer.drawText(if(x2<180)x2 else x2-32,y1,"${dom.tag},${dom.boundingBox()}")
+            // renderer.resetAttributes()
         }
 
         for (child in dom.children)
@@ -406,7 +414,7 @@ fun runApp(
     val tree = ComponentTreeManager()
     var lastDom: DOMNode = DOMNode("empty",)
     var focusedId: String? = null
-    var lastHitIds: List<String> = emptyList()
+    var lastHits: List<DOMNode> = emptyList()
     val perf = PerfCounters()
     var debugVisible = false
 
@@ -449,7 +457,7 @@ fun runApp(
                     perf.collect(frame)
                 }
                 Draw(renderer) {
-                    perf.render(renderer, nodeCount, lastHitIds, debugVisible)
+                    perf.render(renderer, nodeCount, lastHits, debugVisible)
                     renderer.setColor(190,25,10)
                     renderer.drawText(toggleX, toggleY, toggleLabel,)
                 }
@@ -473,14 +481,14 @@ fun runApp(
                     dispatchEventToDom(lastDom, event, 0, 0)
                     if (event.x != null && event.y != null) {
                         val hitNodes = mutableListOf<DOMNode>()
-                        collectHitNodes(lastDom, event, 0, 0, hitNodes)
-                        lastHitIds = hitNodes.mapNotNull { it.id }
+                        collectHitNodes(lastDom, event, 0,0,hitNodes)
+                        lastHits = hitNodes.map { it }
                         val topmost = hitNodes.firstOrNull()
                         if (topmost?.id != null) {
                             focusedId = topmost.id
                         }
                     } else {
-                        lastHitIds = emptyList()
+                        lastHits = emptyList()
                     }
                 }
             } else {
