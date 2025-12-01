@@ -183,32 +183,32 @@ private class PerfCounters(
         val node = nodeCount.toString().padStart(4, ' ')
         val mem = memMeter.toString()
         val cpu = cpuMeter.toString()
-        val y = (renderer.rows() - 1).coerceAtLeast(1)-1
-        var x = 0
+        val maxy = (renderer.rows() - 1).coerceAtLeast(1)-1 -5
+        var y = maxy+2
+        val maxx = (renderer.cols() - 1).coerceAtLeast(1)
+        val x = maxx - 41
+
+
         // Draw(renderer){
         //     text(0,y, "$fps $node $mem $cpu".padEnd(renderer.cols()),"bg:#444400;fg:#aaaaaa")
         //     text(0,y+1, hits.joinToString(",").padEnd(renderer.cols()),"bg:#DDDD22;fg:#aaaaaa")
         // }
         Draw(renderer){
             try{
-                meter(x, y, fpsMeter.percentageInt(), fps+"  ", "bg:#333333;fg:#aaaaaa")
+                meter(x, y++, fpsMeter.percentageInt(), fps.padEnd(40), "bg:#333333;fg:#aaaaaa")
             }catch (e: Exception){}
-            x += fps.length + 1
             try{
-                meter(x, y, memMeter.percentageInt(), mem+"  ", "bg:#333333;fg:#aaaaaa")
+                meter(x, y++, memMeter.percentageInt(), mem.padEnd(40), "bg:#333333;fg:#aaaaaa")
             }catch (e: Exception){}
-            x += mem.length + 1
             try{
-                meter(x, y, cpuMeter.percentageInt(), cpu+"  ", "bg:#333333;fg:#aaaaaa")
+                meter(x, y++, cpuMeter.percentageInt(), cpu.padEnd(40), "bg:#333333;fg:#aaaaaa")
             }catch (e: Exception){}
-            x += cpu.length + 1
             // rect(ContentBox(y,0,y+1,renderer.cols()))
-            text(x, y, " Nodes: $node".padEnd(renderer.cols()), "bg:#333333;fg:#aaaaaa")
-            text(0,y+1, hits
-                .joinToString(","){node ->
-                    "${node.id}${node.boundingBox()}"
-                }
-                .padEnd(renderer.cols()),"bg:#333333;fg:#aaaaaa")
+            text(x, y++, "Nodes: $node".padEnd(40), "bg:#333333;fg:#aaaaaa")
+            y-=hits.size
+            hits.reversed().forEachIndexed { idx,node ->
+                text(0,y+idx, "${" ".repeat(idx)}${node.id}${node.boundingBox()}${node.hasFocus}".padEnd(60),"bg:#333333;fg:#aaaaaa")
+            }
         }
     }
 }
@@ -415,6 +415,7 @@ fun runApp(
     var lastDom: DOMNode = DOMNode("empty",)
     var focusedId: String? = null
     var lastHits: List<DOMNode> = emptyList()
+    var lastEventNode = DOMNode(id="void", tag = "void")
     val perf = PerfCounters()
     var debugVisible = false
 
@@ -449,8 +450,8 @@ fun runApp(
             val nodeCount = renderDomTree(renderer, root)
 
             // Debug toggle + panel drawing
-            val toggleLabel = "Debug"
-            val toggleX = (renderer.cols() - toggleLabel.length).coerceAtLeast(100)
+            val toggleLabel = "=      Debug     ="
+            val toggleX = 0 // ((renderer.cols() + toggleLabel.length) shr 1).coerceAtLeast(10)
             val toggleY = (renderer.rows() - 1 - (if(debugVisible) -0 else 0)).coerceAtLeast(0)
             try{
                 if (debugVisible) {
@@ -459,7 +460,9 @@ fun runApp(
                 Draw(renderer) {
                     perf.render(renderer, nodeCount, lastHits, debugVisible)
                     renderer.setColor(190,25,10)
-                    renderer.drawText(toggleX, toggleY, toggleLabel,)
+                    renderer.drawText(toggleX, toggleY, toggleLabel.padEnd(renderer.cols()),)
+                    renderer.drawText((renderer.cols()+40) shr 2, toggleY-1, "propagation stopped by ${lastEventNode.id} focused:${focusedId}",)
+
                 }
             }catch(e:Exception){}
             renderer.flush()
@@ -468,11 +471,9 @@ fun runApp(
             val event = renderer.tryPollEvent()
             if (event != null) {
                 if (event.kind == "mouse_down" && event.x != null && event.y != null) {
-                    val toggleX = renderer.cols() - 5
-                    val toggleY = renderer.rows() - 1
                     if (event.x >= toggleX && event.y >= toggleY) {
                         debugVisible = !debugVisible
-                        continue
+                        // continue
                     }
                 }
                 if ((event.key == "Esc") || (event.ctrl && event.key == "q")|| (event.key == "~")) {
@@ -484,6 +485,7 @@ fun runApp(
                         collectHitNodes(lastDom, event, 0,0,hitNodes)
                         lastHits = hitNodes.map { it }
                         val topmost = hitNodes.firstOrNull()
+                        lastEventNode=hitNodes.firstOrNull()?:lastEventNode
                         if (topmost?.id != null) {
                             focusedId = topmost.id
                         }

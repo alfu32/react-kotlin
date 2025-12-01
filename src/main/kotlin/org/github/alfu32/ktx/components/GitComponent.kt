@@ -81,6 +81,7 @@ fun GitComponent(
 
     val (messageBuf, _) = useState { TextBuffer().apply { loadText(message) } }
     val messageArea = Textarea(
+        parent="git-panel",
         tree = tree,
         buffer = messageBuf,
         style = StyleSet.Companion.parse("left:0; top:${messageBoxTop}; right:${contentWidth}; bottom:${messageBoxTop + messageBoxHeight}"),
@@ -125,8 +126,9 @@ fun GitComponent(
         id = "git-commits",
     )
     val commitScrollbar = VerticalScrollBar(
+        parent="commitTextBox",
         tree = tree,
-        style = StyleSet.Companion.parse("left:${contentWidth + 1}; top:${commitsTop}; right:${contentWidth + 1}; bottom:${safeHeight - 1}"),
+        style = StyleSet.Companion.parse("left:${0}; top:${commitsTop}; right:${contentWidth + 1}; bottom:${safeHeight - 1}"),
         contentHeight = commitLines.size.coerceAtLeast(commitViewportHeight),
         scrollOffset = clampedCommitScroll,
         onScrollTo = { newOffset -> setCommitScroll(newOffset.coerceIn(0, maxCommitOffset)) }

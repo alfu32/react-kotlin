@@ -13,6 +13,7 @@ import react.UIEventHandler
 import react.renderComponent
 
 fun Textarea(
+    parent:String,
     tree: ComponentTreeManager,
     buffer: ITextBuffer,
     style: StyleSet,
@@ -81,8 +82,9 @@ fun Textarea(
         }
     )
     val scrollbar = VerticalScrollBar(
+        parent="$parent>textarea",
         tree = tree,
-        style = StyleSet.Companion.parse("left:${contentWidth + 1}; top:0; right:${contentWidth + 1}; bottom:${viewportHeight - 1}"),
+        style = StyleSet.Companion.parse("left:${0}; top:0; right:${contentWidth + 1}; bottom:${viewportHeight - 1}"),
         contentHeight = totalLines.coerceAtLeast(viewportHeight),
         scrollOffset = clampedOffset,
         onScrollTo = { off -> setScrollOffset(off.coerceIn(-3, maxOffset + 5)) }

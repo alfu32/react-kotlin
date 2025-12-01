@@ -4,8 +4,10 @@ import react.ComponentTreeManager
 import react.DOMNode
 import react.StyleSet
 import react.renderComponent
+import kotlin.math.abs
 
 fun VerticalScrollBar(
+    parent: String,
     tree: ComponentTreeManager,
     style: StyleSet,
     contentHeight: Int,
@@ -13,8 +15,9 @@ fun VerticalScrollBar(
     onScrollTo: (Int) -> Unit,
     key: String? = null
 ): DOMNode = renderComponent(tree, key) {
-    val vh = ((style.bottom ?: 0) - (style.top ?: 0) + 1).coerceAtLeast(5)
-    val vw = ((style.right ?: 0) - (style.left ?: 0)).coerceAtLeast(0)
+
+    val vh = abs((style.bottom ?: 0) - (style.top ?: 0) + 1).coerceAtLeast(5)
+    val vw = abs((style.right ?: 0) - (style.left ?: 0)).coerceAtLeast(0)
     val ch = contentHeight.coerceAtLeast(vh)
     val maxOffset = (ch - vh).coerceAtLeast(0)
     val clampedOffset = scrollOffset.coerceIn(0, maxOffset)
@@ -34,7 +37,7 @@ fun VerticalScrollBar(
 
     // Wider visuals: two columns for track/indicator to make it easier to grab
     val indicatorStyle = StyleSet.Companion.parse(
-        "left:0; top:${indicatorTop}; right:${vw}; bottom:${indicatorTop + indicatorHeight - 1}"
+        "left:${vw}; top:${indicatorTop}; right:${vw}; bottom:${indicatorTop + indicatorHeight - 1}"
     )
 
     val indicator = DOMNode(
@@ -49,11 +52,11 @@ fun VerticalScrollBar(
         },
     )
 
-    val hitArea = DOMNode(
-        id = "hit-area",
+    val overlay = DOMNode(
+        id = "$parent>scrollbar-overlay",
         tag = "invisible",
         style = StyleSet.Companion.parse(
-            "z-index:99999;left:${if (dragging) -230 else -1}; top:${if (dragging) -230 else indicatorTop}; right:${if (dragging) 230 else vw}; bottom:${if (dragging) 150 else indicatorTop + indicatorHeight - 1}"
+            "z-index:99999;left:${vw-3}; top:${0}; right:${vw}; bottom:${vh}"
         ),
         onMouseMove = { ev ->
             if (!dragging) return@DOMNode
@@ -69,19 +72,19 @@ fun VerticalScrollBar(
 
     val track = DOMNode(
         tag = "scrollbar-track",
-        style = StyleSet.Companion.parse("left:0; top:0; right:${vw}; bottom:${vh - 1}"),
+        style = StyleSet.Companion.parse("left:${vw}; top:0; right:${vw}; bottom:${vh - 1}"),
         id = "scrollbar-track",
         onMouseDown = { ev ->
             val y = ev.relY ?: 0
             val targetTop = (y - indicatorHeight / 2).coerceIn(0, trackRoom)
             onScrollTo(toOffset(targetTop))
         },
-        children = listOf( hitArea,indicator,),
+        children = listOf( overlay,indicator,),
     )
 
     DOMNode(
         tag = "vertical-scrollbar",
-        style = style,
+        style = StyleSet.Companion.parse("left:${vw}; top:0; right:${vw}; bottom:${vh - 1}"),
         id = "vertical-scrollbar",
         children = listOf(track),
     )

@@ -45,7 +45,7 @@ data class StyleSet(
         return this
     }
 
-    fun boundingBox() = ContentBox(top=top ?: 0, left=left ?: 0, right=right ?: 0, bottom=bottom ?: 0)
+    fun boundingBox() = ContentBox(top=top ?: 0, left=left ?: 0, bottom=bottom ?: 0, right=right ?: 0)
 
     fun merged(src: StyleSet): StyleSet =
         this.copy().also { it.mergeFrom(src) }

@@ -136,8 +136,9 @@ fun CodeEditor(
     }
 
     val scrollbar = VerticalScrollBar(
+        parent="editor",
         tree = tree,
-        style = StyleSet.Companion.parse("left:${gutterWidth + contentWidth}; top:0; right:${gutterWidth + contentWidth}; bottom:${viewportHeight - 1}"),
+        style = StyleSet.Companion.parse("left:${gutterWidth}; top:0; right:${gutterWidth + contentWidth}; bottom:${viewportHeight - 1}"),
         contentHeight = totalLines.coerceAtLeast(viewportHeight),
         scrollOffset = clampedOffset,
         onScrollTo = { off -> setScrollOffset(off.coerceIn(0, maxOffset)) }
